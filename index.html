@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#08040f" />
+  <title>pSTONKS Yield Dashboard</title>
+  <meta name="description" content="Track pNVDA, pAAPL and pGOOGL yields paid and pending on PulseChain." />
+  <style>
+    :root {
+      --bg:#07040d;
+      --panel:rgba(20,10,35,.82);
+      --panel2:rgba(10,7,20,.94);
+      --border:rgba(176,79,255,.35);
+      --purple:#b54cff;
+      --purple2:#7b2cff;
+      --green:#82ff29;
+      --pink:#ec4fff;
+      --text:#f7f2ff;
+      --muted:#a99bbd;
+      --danger:#ff5c84;
+      --shadow:0 0 35px rgba(139,53,255,.18);
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0; min-height:100vh; color:var(--text);
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(139,44,255,.18), transparent 34rem),
+        radial-gradient(circle at 88% 20%, rgba(127,255,41,.07), transparent 32rem),
+        linear-gradient(180deg,#090412 0%,#050309 60%,#08050e 100%);
+    }
+    body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.14;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,black,transparent 75%)}
+    a{color:inherit}
+    button,input,textarea{font:inherit}
+    .shell{width:min(1440px,calc(100% - 28px));margin:0 auto 70px}
+    .hero{position:relative;overflow:hidden;border:1px solid var(--border);border-top:0;border-radius:0 0 26px 26px;box-shadow:var(--shadow);background:#0a0610}
+    .hero img{display:block;width:100%;aspect-ratio:1280/426;object-fit:cover}
+    .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 48%,rgba(7,4,13,.92) 100%);pointer-events:none}
+    .heroBar{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:18px 22px;display:flex;justify-content:space-between;gap:16px;align-items:flex-end}
+    .brandLine{font-size:clamp(18px,2.3vw,31px);font-weight:900;letter-spacing:-.03em;text-shadow:0 2px 22px #000}
+    .brandLine span{color:var(--green)}
+    .network{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(7,4,13,.78);border:1px solid rgba(130,255,41,.35);font-size:12px;font-weight:800;color:#dfffc9;backdrop-filter:blur(10px)}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
+    .toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;margin:22px 0}
+    .walletPanel,.panel{background:linear-gradient(180deg,rgba(24,12,41,.9),rgba(10,6,18,.94));border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow)}
+    .walletPanel{padding:18px}
+    .panelTitle{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:#cab8df;font-weight:900;margin-bottom:10px}
+    .walletRow{display:flex;gap:10px;align-items:stretch}
+    textarea{width:100%;min-height:64px;resize:vertical;padding:12px 14px;border-radius:13px;background:#090610;color:var(--text);border:1px solid rgba(255,255,255,.12);outline:none;line-height:1.45}
+    textarea:focus,input:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(181,76,255,.12)}
+    .btn{appearance:none;border:1px solid rgba(181,76,255,.55);background:linear-gradient(180deg,#a543ef,#6b22be);color:white;font-weight:900;padding:0 18px;border-radius:13px;cursor:pointer;box-shadow:0 7px 24px rgba(127,45,207,.22);white-space:nowrap}
+    .btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+    .btn.secondary{background:#100a1a;border-color:rgba(255,255,255,.12);box-shadow:none;padding:12px 15px}
+    .btn.danger{border-color:rgba(255,92,132,.28);color:#ffafc2}
+    .actions{display:flex;gap:10px}
+    .hint{font-size:12px;color:var(--muted);margin-top:9px}
+    .statusBar{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}
+    .pill{font-size:12px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.23);color:#c8bad8}
+    .pill.ok{border-color:rgba(130,255,41,.26);color:#caffaa}
+    .pill.warn{border-color:rgba(255,179,71,.25);color:#ffd59c}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+    .summaryCard{padding:20px;border-radius:20px;border:1px solid var(--border);background:linear-gradient(145deg,rgba(29,13,51,.96),rgba(10,6,18,.92));box-shadow:var(--shadow);position:relative;overflow:hidden}
+    .summaryCard:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;right:-45px;top:-55px;background:var(--purple);filter:blur(48px);opacity:.18}
+    .summaryCard.pending:after{background:var(--green)}
+    .summaryCard.total:after{background:var(--pink)}
+    .kicker{font-size:11px;color:#b6a4cc;font-weight:900;text-transform:uppercase;letter-spacing:.13em}
+    .big{font-size:clamp(27px,4vw,46px);font-weight:950;letter-spacing:-.045em;margin-top:5px;font-variant-numeric:tabular-nums}
+    .sub{font-size:12px;color:var(--muted);margin-top:4px}
+    .assets{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+    .asset{padding:20px;position:relative;overflow:hidden}
+    .assetHead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:17px}
+    .ticker{display:flex;align-items:center;gap:11px;font-weight:950;font-size:21px}
+    .coin{width:39px;height:39px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:950;background:radial-gradient(circle at 35% 30%,#baff86,#4ea919 62%,#214f0e);border:1px solid #a6ff68;box-shadow:0 0 25px rgba(130,255,41,.18);color:#091104}
+    .asset:nth-child(2) .coin{background:radial-gradient(circle at 35% 30%,#f2f2f2,#777 62%,#222);border-color:#ddd;color:#111}
+    .asset:nth-child(3) .coin{background:radial-gradient(circle at 35% 30%,#ffd563,#dc8f00 62%,#6c3f00);border-color:#ffc443;color:#2b1600}
+    .price{font-size:13px;color:#c7bad5;text-align:right}.price strong{color:white;font-size:16px;display:block}
+    .assetGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .metric{padding:13px;border-radius:13px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.075)}
+    .metric.full{grid-column:1/-1;background:linear-gradient(90deg,rgba(114,35,182,.22),rgba(130,255,41,.06))}
+    .metricLabel{font-size:10px;color:#a89ab8;text-transform:uppercase;letter-spacing:.12em;font-weight:900}
+    .metricVal{font-size:18px;font-weight:900;margin-top:5px;font-variant-numeric:tabular-nums;word-break:break-word}
+    .metricUsd{font-size:11px;color:#a99bbd;margin-top:2px}
+    .section{padding:18px;margin-bottom:14px}
+    .sectionHeader{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+    .sectionHeader h2{margin:0;font-size:18px}
+    .tableWrap{overflow:auto;border-radius:13px;border:1px solid rgba(255,255,255,.07)}
+    table{border-collapse:collapse;width:100%;min-width:1020px;background:rgba(4,2,8,.42)}
+    th,td{text-align:right;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.065);font-size:12px;font-variant-numeric:tabular-nums}
+    th{position:sticky;top:0;background:#100918;color:#a997bd;text-transform:uppercase;letter-spacing:.08em;font-size:10px;z-index:1}
+    th:first-child,td:first-child{text-align:left}
+    tr:last-child td{border-bottom:0}
+    .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#ddd1ec}
+    .usd{color:#caffae}
+    .settingsGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .field{padding:12px;border-radius:13px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.07)}
+    .field label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#a99bbd;font-weight:900;margin-bottom:7px}
+    .field input{width:100%;padding:9px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:#08050d;color:white;outline:none}
+    details summary{cursor:pointer;color:#cdbbe2;font-weight:800;font-size:13px}
+    .contractList{display:grid;gap:7px;margin-top:13px;font-size:12px;color:#a99bbd}.contractList code{color:#e3d9ef;word-break:break-all}
+    .empty{padding:34px;text-align:center;color:#a99bbd}
+    .loader{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.22);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;vertical-align:-2px;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .footer{text-align:center;color:#776985;font-size:11px;margin-top:18px;line-height:1.6}
+    @media(max-width:900px){.assets,.summary{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr}.actions{justify-content:stretch}.actions .btn{flex:1}.settingsGrid{grid-template-columns:1fr}.heroBar{padding:12px}.network{display:none}}
+    @media(max-width:600px){.shell{width:min(100% - 16px,1440px)}.walletRow{flex-direction:column}.walletRow .btn{min-height:45px}.hero img{min-height:210px}.brandLine{font-size:18px}.summaryCard,.asset,.section{padding:15px}.big{font-size:34px}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <img src="assets/pstonks-banner.png" alt="pSTONKS ecosystem" />
+      <div class="heroBar">
+        <div class="brandLine">pSTONKS <span>Yield Dashboard</span></div>
+        <div class="network"><span class="dot"></span> PulseChain · Live Contract Reads</div>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <div class="walletPanel">
+        <div class="panelTitle">Wallets to track</div>
+        <div class="walletRow">
+          <textarea id="walletInput" spellcheck="false" placeholder="Paste one or multiple wallet addresses — separated by spaces, commas or new lines"></textarea>
+          <button class="btn" id="loadBtn">Load Earnings</button>
+        </div>
+        <div class="hint">Wallets are remembered only in this browser using local storage. No wallet connection or signature is required.</div>
+        <div class="statusBar" id="statusBar"><span class="pill">Ready</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" id="refreshBtn">↻ Refresh</button>
+        <button class="btn secondary danger" id="clearBtn">Clear Saved</button>
+      </div>
+    </section>
+
+    <section class="summary">
+      <article class="summaryCard">
+        <div class="kicker">Already Paid</div>
+        <div class="big" id="sumPaidUsd">$0.00</div>
+        <div class="sub" id="sumPaidSub">Across all wallets & assets</div>
+      </article>
+      <article class="summaryCard pending">
+        <div class="kicker">Remaining Due</div>
+        <div class="big" id="sumPendingUsd">$0.00</div>
+        <div class="sub" id="sumPendingSub">Pending yields available to claim</div>
+      </article>
+      <article class="summaryCard total">
+        <div class="kicker">Total Earnings</div>
+        <div class="big" id="sumEarnedUsd">$0.00</div>
+        <div class="sub" id="sumEarnedSub">Paid + remaining due</div>
+      </article>
+    </section>
+
+    <section class="assets" id="assets"></section>
+
+    <section class="panel section">
+      <div class="sectionHeader"><h2>Wallet Breakdown</h2><span class="pill" id="walletCount">0 wallets</span></div>
+      <div id="walletTable"><div class="empty">Add a wallet above to load pSTONKS earnings.</div></div>
+    </section>
+
+    <section class="panel section">
+      <details>
+        <summary>Price settings & contract details</summary>
+        <p class="hint">USD prices are automatically pulled from the most liquid PulseChain DexScreener pair for each payout token. If a token has no usable market price, set a manual USD price below. A manual value always overrides auto pricing.</p>
+        <div class="settingsGrid" id="priceSettings"></div>
+        <div class="contractList" id="contractList"></div>
+      </details>
+    </section>
+
+    <div class="footer">Read-only dashboard. It never requests a wallet signature and cannot move funds. Values depend on the contracts, PulseChain RPC availability, and market pricing source.</div>
+  </main>
+
+<script>
+const RPC = 'https://rpc.pulsechain.com';
+const DEX_API = 'https://api.dexscreener.com/latest/dex/tokens/';
+const STORAGE_WALLETS = 'pstonks-dashboard-wallets-v1';
+const STORAGE_PRICES = 'pstonks-dashboard-prices-v1';
+
+// Selectors confirmed from the contract read interface shown by the user.
+const SELECTOR_PENDING = 'e4f8d62e'; // pendingYields(address,uint256)
+const SELECTOR_PAID = '1781d159';    // userYieldsPaid(address,address)
+const SELECTOR_DECIMALS = '313ce567';
+
+const ASSETS = [
+  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af' },
+  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599' },
+  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181' }
+];
+
+const state = { wallets:[], rows:[], prices:{}, decimals:{}, loading:false, lastUpdated:null };
+const $ = id => document.getElementById(id);
+
+function isAddress(v){ return /^0x[0-9a-fA-F]{40}$/.test(v); }
+function parseWallets(text){
+  const found = (text.match(/0x[0-9a-fA-F]{40}/g) || []).map(x=>x.toLowerCase());
+  return [...new Set(found)].filter(isAddress);
+}
+function shortAddr(a){ return a ? `${a.slice(0,6)}…${a.slice(-4)}` : ''; }
+function padWord(hexNo0x){ return hexNo0x.toLowerCase().padStart(64,'0'); }
+function encAddress(a){ return padWord(a.replace(/^0x/,'').toLowerCase()); }
+function encUint(v){ return BigInt(v).toString(16).padStart(64,'0'); }
+function decodeUint(hex){ if(!hex || hex==='0x') return 0n; return BigInt(hex); }
+
+async function rpcCall(to,data){
+  const res = await fetch(RPC,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',params:[{to,data},'latest']})});
+  if(!res.ok) throw new Error(`RPC HTTP ${res.status}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error.message || 'PulseChain RPC error');
+  return json.result;
+}
+async function getDecimals(token){
+  try { return Number(decodeUint(await rpcCall(token,'0x'+SELECTOR_DECIMALS))); }
+  catch { return 18; }
+}
+async function getPending(asset,wallet){
+  const data='0x'+SELECTOR_PENDING+encAddress(wallet)+encUint(0);
+  return decodeUint(await rpcCall(asset.yieldContract,data));
+}
+async function getPaid(asset,wallet){
+  const data='0x'+SELECTOR_PAID+encAddress(wallet)+encAddress(asset.payoutToken);
+  return decodeUint(await rpcCall(asset.yieldContract,data));
+}
+function formatUnits(raw, decimals=18, maxFrac=8){
+  raw=BigInt(raw); const neg=raw<0n; if(neg) raw=-raw;
+  const s=raw.toString().padStart(decimals+1,'0');
+  const whole=decimals ? s.slice(0,-decimals) : s;
+  let frac=decimals ? s.slice(-decimals) : '';
+  frac=frac.slice(0,maxFrac).replace(/0+$/,'');
+  return (neg?'-':'') + Number(whole).toLocaleString('en-US') + (frac?'.'+frac:'');
+}
+function unitsNumber(raw,decimals=18){
+  const s=formatUnits(raw,decimals,12).replace(/,/g,'');
+  return Number(s) || 0;
+}
+function fmtUsd(n){
+  if(!Number.isFinite(n)) return '—';
+  if(Math.abs(n)>=1000000) return n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
+  return n.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtPrice(n){
+  if(!Number.isFinite(n) || n<=0) return 'No price';
+  if(n<.01) return '$'+n.toLocaleString('en-US',{maximumSignificantDigits:5});
+  return n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:4});
+}
+function getManualPrices(){ try{return JSON.parse(localStorage.getItem(STORAGE_PRICES)||'{}')}catch{return{}} }
+function saveManualPrices(obj){ localStorage.setItem(STORAGE_PRICES,JSON.stringify(obj)); }
+
+async function fetchAutoPrice(asset){
+  try{
+    const r=await fetch(DEX_API+asset.payoutToken);
+    if(!r.ok) throw new Error();
+    const j=await r.json();
+    const pairs=(j.pairs||[]).filter(p => String(p.chainId||'').toLowerCase()==='pulsechain' && Number(p.priceUsd)>0);
+    pairs.sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0));
+    const p=pairs[0];
+    return p ? {price:Number(p.priceUsd),source:'DexScreener',pair:p.pairAddress,liquidity:Number(p.liquidity?.usd||0)} : {price:0,source:'Unavailable'};
+  }catch{return {price:0,source:'Unavailable'}}
+}
+
+async function loadPricesAndDecimals(){
+  const manual=getManualPrices();
+  await Promise.all(ASSETS.map(async a=>{
+    const [dec, auto]=await Promise.all([getDecimals(a.payoutToken),fetchAutoPrice(a)]);
+    state.decimals[a.key]=dec;
+    const man=Number(manual[a.key]);
+    state.prices[a.key]={...auto,price:(Number.isFinite(man)&&man>0)?man:auto.price,manual:(Number.isFinite(man)&&man>0)};
+  }));
+}
+
+async function loadAll(){
+  if(state.loading) return;
+  const wallets=parseWallets($('walletInput').value);
+  if(!wallets.length){ setStatus('Enter at least one valid 0x wallet address.','warn'); return; }
+  state.wallets=wallets; localStorage.setItem(STORAGE_WALLETS,JSON.stringify(wallets));
+  state.loading=true; $('loadBtn').innerHTML='<span class="loader"></span>Loading'; setStatus(`Reading ${wallets.length} wallet${wallets.length===1?'':'s'} from PulseChain…`);
+  try{
+    await loadPricesAndDecimals();
+    const jobs=[];
+    for(const wallet of wallets) for(const asset of ASSETS) jobs.push((async()=>{
+      const [paid,pending]=await Promise.all([getPaid(asset,wallet),getPending(asset,wallet)]);
+      return {wallet,key:asset.key,paid,pending};
+    })());
+    state.rows=await Promise.all(jobs);
+    state.lastUpdated=new Date();
+    render(); setStatus(`Live · ${wallets.length} wallet${wallets.length===1?'':'s'} · updated ${state.lastUpdated.toLocaleTimeString()}`,'ok');
+  }catch(err){ console.error(err); setStatus(`Could not load: ${err.message}`,'warn'); }
+  finally{state.loading=false;$('loadBtn').textContent='Load Earnings'}
+}
+function setStatus(text,kind=''){ $('statusBar').innerHTML=`<span class="pill ${kind}">${text}</span>`; }
+
+function aggregate(){
+  const out={}; ASSETS.forEach(a=>out[a.key]={paid:0n,pending:0n});
+  state.rows.forEach(r=>{out[r.key].paid+=r.paid;out[r.key].pending+=r.pending});
+  return out;
+}
+function render(){
+  const totals=aggregate();
+  let paidUsd=0,pendingUsd=0;
+  ASSETS.forEach(a=>{
+    const d=state.decimals[a.key]??18,p=state.prices[a.key]?.price||0,t=totals[a.key];
+    paidUsd+=unitsNumber(t.paid,d)*p; pendingUsd+=unitsNumber(t.pending,d)*p;
+  });
+  $('sumPaidUsd').textContent=fmtUsd(paidUsd); $('sumPendingUsd').textContent=fmtUsd(pendingUsd); $('sumEarnedUsd').textContent=fmtUsd(paidUsd+pendingUsd);
+  $('sumPaidSub').textContent=`Across ${state.wallets.length} saved wallet${state.wallets.length===1?'':'s'}`;
+  $('sumPendingSub').textContent='Pending yields remaining to claim'; $('sumEarnedSub').textContent='Paid + pending at current market prices';
+
+  $('assets').innerHTML=ASSETS.map((a,i)=>{
+    const t=totals[a.key],d=state.decimals[a.key]??18,pi=state.prices[a.key]||{price:0,source:'Unavailable'};
+    const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending;
+    return `<article class="panel asset">
+      <div class="assetHead"><div class="ticker"><div class="coin">${i===0?'N':i===1?'A':'G'}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
+      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${pi.manual?'Manual price':pi.source}${pi.liquidity?` · $${Math.round(pi.liquidity).toLocaleString()} liq`:''}</div></div>
+      <div class="assetGrid">
+        <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(t.paid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(paidN*pi.price)}</div></div>
+        <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(t.pending,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(pendingN*pi.price)}</div></div>
+        <div class="metric full"><div class="metricLabel">Total Earned</div><div class="metricVal">${formatUnits(earned,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd((paidN+pendingN)*pi.price)}</div></div>
+      </div></article>`;
+  }).join('');
+  renderWalletTable(); renderSettings();
+}
+function renderWalletTable(){
+  $('walletCount').textContent=`${state.wallets.length} wallet${state.wallets.length===1?'':'s'}`;
+  if(!state.wallets.length){$('walletTable').innerHTML='<div class="empty">Add a wallet above to load pSTONKS earnings.</div>';return}
+  const heads=ASSETS.map(a=>`<th>${a.symbol} Paid</th><th>${a.symbol} Due</th>`).join('');
+  const rows=state.wallets.map(w=>{
+    let walletUsd=0;
+    const cells=ASSETS.map(a=>{
+      const r=state.rows.find(x=>x.wallet===w&&x.key===a.key)||{paid:0n,pending:0n}; const d=state.decimals[a.key]??18,p=state.prices[a.key]?.price||0;
+      walletUsd+=(unitsNumber(r.paid,d)+unitsNumber(r.pending,d))*p;
+      return `<td>${formatUnits(r.paid,d)}</td><td>${formatUnits(r.pending,d)}</td>`;
+    }).join('');
+    return `<tr><td class="addr" title="${w}">${shortAddr(w)}</td>${cells}<td class="usd"><strong>${fmtUsd(walletUsd)}</strong></td></tr>`;
+  }).join('');
+  $('walletTable').innerHTML=`<div class="tableWrap"><table><thead><tr><th>Wallet</th>${heads}<th>Total USD</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function renderSettings(){
+  const manual=getManualPrices();
+  $('priceSettings').innerHTML=ASSETS.map(a=>`<div class="field"><label>${a.symbol} Manual USD Price</label><input inputmode="decimal" data-price="${a.key}" value="${manual[a.key]||''}" placeholder="Auto: ${state.prices[a.key]?.price?fmtPrice(state.prices[a.key].price):'unavailable'}"></div>`).join('');
+  document.querySelectorAll('[data-price]').forEach(el=>el.addEventListener('change',()=>{
+    const m=getManualPrices(),v=Number(el.value); if(Number.isFinite(v)&&v>0)m[el.dataset.price]=v;else delete m[el.dataset.price]; saveManualPrices(m); loadAll();
+  }));
+  $('contractList').innerHTML=ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} payout token: <code>${a.payoutToken}</code></div>`).join('');
+}
+
+$('loadBtn').addEventListener('click',loadAll);
+$('refreshBtn').addEventListener('click',loadAll);
+$('clearBtn').addEventListener('click',()=>{localStorage.removeItem(STORAGE_WALLETS);state.wallets=[];state.rows=[];$('walletInput').value='';render();setStatus('Saved wallets cleared.');});
+$('walletInput').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')loadAll()});
+
+(function init(){
+  let saved=[]; try{saved=JSON.parse(localStorage.getItem(STORAGE_WALLETS)||'[]')}catch{}
+  if(Array.isArray(saved)&&saved.length){$('walletInput').value=saved.join('\n'); loadAll();} else {render();renderSettings();}
+})();
+</script>
+</body>
+</html>
