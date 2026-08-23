@@ -165,7 +165,7 @@
     <section class="panel section">
       <details>
         <summary>Price settings & contract details</summary>
-        <p class="hint">USD prices are automatically pulled from the most liquid PulseChain DexScreener pair for each payout token. If a token has no usable market price, set a manual USD price below. A manual value always overrides auto pricing.</p>
+        <p class="hint">USD prices and 24-hour changes are automatically pulled from the most liquid Ethereum DexScreener pair for each official Ondo token. Ethereum and PulseChain liquidity are shown separately. If a token has no usable Ethereum market price, set a manual USD price below. A manual value always overrides auto pricing.</p>
         <div class="settingsGrid" id="priceSettings"></div>
         <div class="contractList" id="contractList"></div>
       </details>
@@ -186,9 +186,9 @@ const SELECTOR_PAID = '1781d159';    // userYieldsPaid(address,address)
 const SELECTOR_DECIMALS = '313ce567';
 
 const ASSETS = [
-  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af' },
-  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599' },
-  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181' }
+  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af', ethereumToken:'0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee' },
+  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599', ethereumToken:'0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c' },
+  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181', ethereumToken:'0xba47214edd2bb43099611b208f75e4b42fdcfedc' }
 ];
 
 const state = { wallets:[], rows:[], prices:{}, decimals:{}, loading:false, lastUpdated:null };
@@ -255,16 +255,34 @@ function fmtPriceChange(n){
 function getManualPrices(){ try{return JSON.parse(localStorage.getItem(STORAGE_PRICES)||'{}')}catch{return{}} }
 function saveManualPrices(obj){ localStorage.setItem(STORAGE_PRICES,JSON.stringify(obj)); }
 
-async function fetchAutoPrice(asset){
+async function fetchDexPairs(token){
   try{
-    const r=await fetch(DEX_API+asset.payoutToken);
+    const r=await fetch(DEX_API+token);
     if(!r.ok) throw new Error();
     const j=await r.json();
-    const pairs=(j.pairs||[]).filter(p => String(p.chainId||'').toLowerCase()==='pulsechain' && Number(p.priceUsd)>0);
-    pairs.sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0));
-    const p=pairs[0];
-    return p ? {price:Number(p.priceUsd),change24h:Number(p.priceChange?.h24),source:'DexScreener',pair:p.pairAddress,liquidity:Number(p.liquidity?.usd||0)} : {price:0,change24h:NaN,source:'Unavailable'};
-  }catch{return {price:0,change24h:NaN,source:'Unavailable'}}
+    return j.pairs||[];
+  }catch{return []}
+}
+function deepestPair(pairs,chainId){
+  return pairs
+    .filter(p=>String(p.chainId||'').toLowerCase()===chainId && Number(p.priceUsd)>0)
+    .sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0))[0];
+}
+async function fetchAutoPrice(asset){
+  const [pulsePairs,ethereumPairs]=await Promise.all([
+    fetchDexPairs(asset.payoutToken),
+    fetchDexPairs(asset.ethereumToken)
+  ]);
+  const pulse=deepestPair(pulsePairs,'pulsechain');
+  const ethereum=deepestPair(ethereumPairs,'ethereum');
+  return {
+    price:ethereum?Number(ethereum.priceUsd):0,
+    change24h:ethereum?Number(ethereum.priceChange?.h24):NaN,
+    source:ethereum?'Ethereum DexScreener':'Ethereum price unavailable',
+    pair:ethereum?.pairAddress,
+    ethereumLiquidity:Number(ethereum?.liquidity?.usd||0),
+    pulseLiquidity:Number(pulse?.liquidity?.usd||0)
+  };
 }
 
 async function loadPricesAndDecimals(){
@@ -319,7 +337,7 @@ function render(){
     const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending;
     return `<article class="panel asset">
       <div class="assetHead"><div class="ticker"><div class="coin">${i===0?'N':i===1?'A':'G'}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
-      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}${pi.liquidity?` · $${Math.round(pi.liquidity).toLocaleString()} liq`:''}</div></div></div>
+      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}</div><div>Ethereum · ${fmtUsd(pi.ethereumLiquidity)} liq</div><div>PulseChain · ${fmtUsd(pi.pulseLiquidity)} liq</div></div></div>
       <div class="assetGrid">
         <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(t.paid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(paidN*pi.price)}</div></div>
         <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(t.pending,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(pendingN*pi.price)}</div></div>
@@ -349,7 +367,7 @@ function renderSettings(){
   document.querySelectorAll('[data-price]').forEach(el=>el.addEventListener('change',()=>{
     const m=getManualPrices(),v=Number(el.value); if(Number.isFinite(v)&&v>0)m[el.dataset.price]=v;else delete m[el.dataset.price]; saveManualPrices(m); loadAll();
   }));
-  $('contractList').innerHTML=ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} payout token: <code>${a.payoutToken}</code></div>`).join('');
+  $('contractList').innerHTML=ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} PulseChain payout token: <code>${a.payoutToken}</code><br>${a.symbol} Ethereum pricing token: <code>${a.ethereumToken}</code></div>`).join('');
 }
 
 $('loadBtn').addEventListener('click',loadAll);
