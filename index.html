@@ -76,6 +76,10 @@
     .asset:nth-child(2) .coin{background:radial-gradient(circle at 35% 30%,#f2f2f2,#777 62%,#222);border-color:#ddd;color:#111}
     .asset:nth-child(3) .coin{background:radial-gradient(circle at 35% 30%,#ffd563,#dc8f00 62%,#6c3f00);border-color:#ffc443;color:#2b1600}
     .price{font-size:13px;color:#c7bad5;text-align:right}.price strong{color:white;font-size:16px;display:block}
+    .priceChange{display:inline-block;margin-top:3px;font-size:12px;font-weight:900;font-variant-numeric:tabular-nums}
+    .priceChange.up{color:var(--green)}
+    .priceChange.down{color:var(--danger)}
+    .priceChange.flat{color:var(--muted)}
     .assetGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .metric{padding:13px;border-radius:13px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.075)}
     .metric.full{grid-column:1/-1;background:linear-gradient(90deg,rgba(114,35,182,.22),rgba(130,255,41,.06))}
@@ -242,6 +246,12 @@ function fmtPrice(n){
   if(n<.01) return '$'+n.toLocaleString('en-US',{maximumSignificantDigits:5});
   return n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:4});
 }
+function fmtPriceChange(n){
+  if(!Number.isFinite(n)) return '<span class="priceChange flat">24h —</span>';
+  const cls=n>0?'up':n<0?'down':'flat';
+  const sign=n>0?'+':'';
+  return `<span class="priceChange ${cls}">24h ${sign}${n.toFixed(2)}%</span>`;
+}
 function getManualPrices(){ try{return JSON.parse(localStorage.getItem(STORAGE_PRICES)||'{}')}catch{return{}} }
 function saveManualPrices(obj){ localStorage.setItem(STORAGE_PRICES,JSON.stringify(obj)); }
 
@@ -253,8 +263,8 @@ async function fetchAutoPrice(asset){
     const pairs=(j.pairs||[]).filter(p => String(p.chainId||'').toLowerCase()==='pulsechain' && Number(p.priceUsd)>0);
     pairs.sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0));
     const p=pairs[0];
-    return p ? {price:Number(p.priceUsd),source:'DexScreener',pair:p.pairAddress,liquidity:Number(p.liquidity?.usd||0)} : {price:0,source:'Unavailable'};
-  }catch{return {price:0,source:'Unavailable'}}
+    return p ? {price:Number(p.priceUsd),change24h:Number(p.priceChange?.h24),source:'DexScreener',pair:p.pairAddress,liquidity:Number(p.liquidity?.usd||0)} : {price:0,change24h:NaN,source:'Unavailable'};
+  }catch{return {price:0,change24h:NaN,source:'Unavailable'}}
 }
 
 async function loadPricesAndDecimals(){
@@ -309,7 +319,7 @@ function render(){
     const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending;
     return `<article class="panel asset">
       <div class="assetHead"><div class="ticker"><div class="coin">${i===0?'N':i===1?'A':'G'}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
-      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${pi.manual?'Manual price':pi.source}${pi.liquidity?` · $${Math.round(pi.liquidity).toLocaleString()} liq`:''}</div></div>
+      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}${pi.liquidity?` · $${Math.round(pi.liquidity).toLocaleString()} liq`:''}</div></div></div>
       <div class="assetGrid">
         <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(t.paid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(paidN*pi.price)}</div></div>
         <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(t.pending,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(pendingN*pi.price)}</div></div>
