@@ -263,9 +263,10 @@ async function fetchDexPairs(token){
     return j.pairs||[];
   }catch{return []}
 }
-function deepestPair(pairs,chainId){
+function deepestPair(pairs,chainId,token){
+  const wanted=token.toLowerCase();
   return pairs
-    .filter(p=>String(p.chainId||'').toLowerCase()===chainId && Number(p.priceUsd)>0)
+    .filter(p=>String(p.chainId||'').toLowerCase()===chainId && String(p.baseToken?.address||'').toLowerCase()===wanted && Number(p.priceUsd)>0)
     .sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0))[0];
 }
 async function fetchAutoPrice(asset){
@@ -273,8 +274,8 @@ async function fetchAutoPrice(asset){
     fetchDexPairs(asset.payoutToken),
     fetchDexPairs(asset.ethereumToken)
   ]);
-  const pulse=deepestPair(pulsePairs,'pulsechain');
-  const ethereum=deepestPair(ethereumPairs,'ethereum');
+  const pulse=deepestPair(pulsePairs,'pulsechain',asset.payoutToken);
+  const ethereum=deepestPair(ethereumPairs,'ethereum',asset.ethereumToken);
   return {
     price:ethereum?Number(ethereum.priceUsd):0,
     change24h:ethereum?Number(ethereum.priceChange?.h24):NaN,
