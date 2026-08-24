@@ -165,7 +165,7 @@
     <section class="panel section">
       <details>
         <summary>Price settings & contract details</summary>
-        <p class="hint">USD prices and 24-hour changes are automatically pulled from the most liquid Ethereum DexScreener pair for each official Ondo token. Ethereum and PulseChain liquidity are shown separately. If a token has no usable Ethereum market price, set a manual USD price below. A manual value always overrides auto pricing.</p>
+        <p class="hint">USD prices and 24-hour changes are automatically pulled from the deepest Ethereum DexScreener pair for each official Ondo token. The last valid market result is saved in this browser and used if DexScreener is temporarily unavailable, so an API failure does not value an asset at zero. Ethereum and PulseChain liquidity are shown separately. A manual value always overrides auto pricing.</p>
         <div class="settingsGrid" id="priceSettings"></div>
         <div class="contractList" id="contractList"></div>
       </details>
@@ -179,6 +179,7 @@ const RPC = 'https://rpc.pulsechain.com';
 const DEX_API = 'https://api.dexscreener.com/latest/dex/tokens/';
 const STORAGE_WALLETS = 'pstonks-dashboard-wallets-v1';
 const STORAGE_PRICES = 'pstonks-dashboard-prices-v1';
+const STORAGE_MARKETS = 'pstonks-dashboard-markets-v1';
 
 // Selectors confirmed from the contract read interface shown by the user.
 const SELECTOR_PENDING = 'e4f8d62e'; // pendingYields(address,uint256)
@@ -254,6 +255,18 @@ function fmtPriceChange(n){
 }
 function getManualPrices(){ try{return JSON.parse(localStorage.getItem(STORAGE_PRICES)||'{}')}catch{return{}} }
 function saveManualPrices(obj){ localStorage.setItem(STORAGE_PRICES,JSON.stringify(obj)); }
+function getCachedMarkets(){ try{return JSON.parse(localStorage.getItem(STORAGE_MARKETS)||'{}')}catch{return{}} }
+function saveCachedMarket(key,market){
+  const cache=getCachedMarkets(); cache[key]=market;
+  localStorage.setItem(STORAGE_MARKETS,JSON.stringify(cache));
+}
+function formatCacheAge(timestamp){
+  const ms=Math.max(0,Date.now()-Number(timestamp||0));
+  if(ms<60000) return '<1m';
+  if(ms<3600000) return `${Math.floor(ms/60000)}m`;
+  if(ms<86400000) return `${Math.floor(ms/3600000)}h`;
+  return `${Math.floor(ms/86400000)}d`;
+}
 
 async function fetchDexPairs(token){
   try{
@@ -263,27 +276,51 @@ async function fetchDexPairs(token){
     return j.pairs||[];
   }catch{return []}
 }
-function deepestPair(pairs,chainId,token){
+function marketFromPair(pair,token){
   const wanted=token.toLowerCase();
+  const base=String(pair.baseToken?.address||'').toLowerCase();
+  const quote=String(pair.quoteToken?.address||'').toLowerCase();
+  const baseUsd=Number(pair.priceUsd),native=Number(pair.priceNative),pairChange=Number(pair.priceChange?.h24);
+  let price=0,change24h=NaN;
+  if(base===wanted){ price=baseUsd; change24h=pairChange; }
+  else if(quote===wanted && baseUsd>0 && native>0){
+    price=baseUsd/native;
+    change24h=Number.isFinite(pairChange) && pairChange>-100 ? (1/(1+pairChange/100)-1)*100 : NaN;
+  }
+  if(!Number.isFinite(price)||price<=0) return null;
+  return {price,change24h,liquidity:Number(pair.liquidity?.usd||0),pair:pair.pairAddress};
+}
+function deepestMarket(pairs,chainId,token){
   return pairs
-    .filter(p=>String(p.chainId||'').toLowerCase()===chainId && String(p.baseToken?.address||'').toLowerCase()===wanted && Number(p.priceUsd)>0)
-    .sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0))[0];
+    .filter(p=>String(p.chainId||'').toLowerCase()===chainId)
+    .map(p=>marketFromPair(p,token)).filter(Boolean)
+    .sort((a,b)=>b.liquidity-a.liquidity)[0];
 }
 async function fetchAutoPrice(asset){
   const [pulsePairs,ethereumPairs]=await Promise.all([
     fetchDexPairs(asset.payoutToken),
     fetchDexPairs(asset.ethereumToken)
   ]);
-  const pulse=deepestPair(pulsePairs,'pulsechain',asset.payoutToken);
-  const ethereum=deepestPair(ethereumPairs,'ethereum',asset.ethereumToken);
-  return {
-    price:ethereum?Number(ethereum.priceUsd):0,
-    change24h:ethereum?Number(ethereum.priceChange?.h24):NaN,
-    source:ethereum?'Ethereum DexScreener':'Ethereum price unavailable',
-    pair:ethereum?.pairAddress,
-    ethereumLiquidity:Number(ethereum?.liquidity?.usd||0),
-    pulseLiquidity:Number(pulse?.liquidity?.usd||0)
-  };
+  const pulse=deepestMarket(pulsePairs,'pulsechain',asset.payoutToken);
+  const ethereum=deepestMarket(ethereumPairs,'ethereum',asset.ethereumToken);
+  const cached=getCachedMarkets()[asset.key];
+  if(ethereum){
+    const market={
+      price:ethereum.price,
+      change24h:ethereum.change24h,
+      source:'Ethereum DexScreener',
+      pair:ethereum.pair,
+      ethereumLiquidity:ethereum.liquidity,
+      pulseLiquidity:pulse?.liquidity||Number(cached?.pulseLiquidity||0),
+      cachedAt:Date.now()
+    };
+    saveCachedMarket(asset.key,market);
+    return market;
+  }
+  if(Number(cached?.price)>0){
+    return {...cached,pulseLiquidity:pulse?.liquidity||Number(cached.pulseLiquidity||0),source:`Cached Ethereum price · ${formatCacheAge(cached.cachedAt)} old`,cached:true};
+  }
+  return {price:0,change24h:NaN,source:'Ethereum price unavailable · no cache yet',ethereumLiquidity:0,pulseLiquidity:pulse?.liquidity||0};
 }
 
 async function loadPricesAndDecimals(){
