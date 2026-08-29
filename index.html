@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#08040f" />
   <title>pSTONKS Yield Dashboard</title>
-  <meta name="description" content="Track pNVDA, pAAPL and pGOOGL yields paid and pending on PulseChain." />
+  <meta name="description" content="Track pSTONKS yields paid and pending on PulseChain." />
   <style>
     :root {
       --bg:#07040d;
@@ -68,13 +68,13 @@
     .kicker{font-size:11px;color:#b6a4cc;font-weight:900;text-transform:uppercase;letter-spacing:.13em}
     .big{font-size:clamp(27px,4vw,46px);font-weight:950;letter-spacing:-.045em;margin-top:5px;font-variant-numeric:tabular-nums}
     .sub{font-size:12px;color:var(--muted);margin-top:4px}
-    .assets{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+    .assets{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:14px}
     .asset{padding:20px;position:relative;overflow:hidden}
     .assetHead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:17px}
     .ticker{display:flex;align-items:center;gap:11px;font-weight:950;font-size:21px}
     .coin{width:39px;height:39px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:950;background:radial-gradient(circle at 35% 30%,#baff86,#4ea919 62%,#214f0e);border:1px solid #a6ff68;box-shadow:0 0 25px rgba(130,255,41,.18);color:#091104}
-    .asset:nth-child(2) .coin{background:radial-gradient(circle at 35% 30%,#f2f2f2,#777 62%,#222);border-color:#ddd;color:#111}
-    .asset:nth-child(3) .coin{background:radial-gradient(circle at 35% 30%,#ffd563,#dc8f00 62%,#6c3f00);border-color:#ffc443;color:#2b1600}
+    .asset:nth-child(3n+2) .coin{background:radial-gradient(circle at 35% 30%,#f2f2f2,#777 62%,#222);border-color:#ddd;color:#111}
+    .asset:nth-child(3n) .coin{background:radial-gradient(circle at 35% 30%,#ffd563,#dc8f00 62%,#6c3f00);border-color:#ffc443;color:#2b1600}
     .price{font-size:13px;color:#c7bad5;text-align:right}.price strong{color:white;font-size:16px;display:block}
     .priceChange{display:inline-block;margin-top:3px;font-size:12px;font-weight:900;font-variant-numeric:tabular-nums}
     .priceChange.up{color:var(--green)}
@@ -165,7 +165,7 @@
     <section class="panel section">
       <details>
         <summary>Price settings & contract details</summary>
-        <p class="hint">USD prices and 24-hour changes are automatically pulled from the deepest Ethereum DexScreener pair for each official Ondo token. The last valid market result is saved in this browser and used if DexScreener is temporarily unavailable, so an API failure does not value an asset at zero. Ethereum and PulseChain liquidity are shown separately. A manual value always overrides auto pricing.</p>
+        <p class="hint">USD prices and 24-hour changes are automatically pulled from the deepest source-chain DexScreener pair for each payout asset (Ethereum for Ondo assets and BSC for TokensExpress assets). The last valid market result is saved in this browser and used if DexScreener is temporarily unavailable, so an API failure does not value an asset at zero. Source-chain and PulseChain liquidity are shown separately. A manual value always overrides auto pricing.</p>
         <div class="settingsGrid" id="priceSettings"></div>
         <div class="contractList" id="contractList"></div>
       </details>
@@ -184,12 +184,16 @@ const STORAGE_MARKETS = 'pstonks-dashboard-markets-v1';
 // Selectors confirmed from the contract read interface shown by the user.
 const SELECTOR_PENDING = 'e4f8d62e'; // pendingYields(address,uint256)
 const SELECTOR_PAID = '1781d159';    // userYieldsPaid(address,address)
+const SELECTOR_REWARDS_PENDING = '7cd0b5c7'; // withdrawableRewardsOf(address)
+const SELECTOR_REWARDS_PAID = '18f9e291';    // withdrawnRewardsOf(address)
 const SELECTOR_DECIMALS = '313ce567';
 
 const ASSETS = [
-  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af', ethereumToken:'0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee' },
-  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599', ethereumToken:'0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c' },
-  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181', ethereumToken:'0xba47214edd2bb43099611b208f75e4b42fdcfedc' }
+  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', icon:'N', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af', marketToken:'0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
+  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', icon:'A', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599', marketToken:'0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
+  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', icon:'G', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181', marketToken:'0xba47214edd2bb43099611b208f75e4b42fdcfedc', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
+  { key:'hood', sub:'pHOOD', payout:'Robinhood from BSC (TokensExpress)', symbol:'HOODB', icon:'H', tracking:'rewards', yieldContract:'0xea0b2d8ec9eee5f3305e5c91764c4d50d51eeac8', payoutToken:'0x4dcaea2eaed7bb3ccfa1cfec5d6ffdd43e063298', marketToken:'0xa394dcea3fd3847fd793afbfd163e2e3858b7c65', marketChainId:'bsc', marketChainLabel:'BSC' },
+  { key:'spcx', sub:'pSPCX', payout:'SpaceX from BSC (TokensExpress)', symbol:'SPCXB', icon:'X', tracking:'rewards', yieldContract:'0x1a1bad21b92ec7d8d7bb2181602e3429195650ae', payoutToken:'0xb75708b81bc78006d56b9ce7485a9256226e0437', marketToken:'0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1', marketChainId:'bsc', marketChainLabel:'BSC' }
 ];
 
 const state = { wallets:[], rows:[], prices:{}, decimals:{}, loading:false, lastUpdated:null };
@@ -218,10 +222,12 @@ async function getDecimals(token){
   catch { return 18; }
 }
 async function getPending(asset,wallet){
+  if(asset.tracking==='rewards') return decodeUint(await rpcCall(asset.yieldContract,'0x'+SELECTOR_REWARDS_PENDING+encAddress(wallet)));
   const data='0x'+SELECTOR_PENDING+encAddress(wallet)+encUint(0);
   return decodeUint(await rpcCall(asset.yieldContract,data));
 }
 async function getPaid(asset,wallet){
+  if(asset.tracking==='rewards') return decodeUint(await rpcCall(asset.yieldContract,'0x'+SELECTOR_REWARDS_PAID+encAddress(wallet)));
   const data='0x'+SELECTOR_PAID+encAddress(wallet)+encAddress(asset.payoutToken);
   return decodeUint(await rpcCall(asset.yieldContract,data));
 }
@@ -297,20 +303,20 @@ function deepestMarket(pairs,chainId,token){
     .sort((a,b)=>b.liquidity-a.liquidity)[0];
 }
 async function fetchAutoPrice(asset){
-  const [pulsePairs,ethereumPairs]=await Promise.all([
+  const [pulsePairs,sourcePairs]=await Promise.all([
     fetchDexPairs(asset.payoutToken),
-    fetchDexPairs(asset.ethereumToken)
+    fetchDexPairs(asset.marketToken)
   ]);
   const pulse=deepestMarket(pulsePairs,'pulsechain',asset.payoutToken);
-  const ethereum=deepestMarket(ethereumPairs,'ethereum',asset.ethereumToken);
+  const sourceMarket=deepestMarket(sourcePairs,asset.marketChainId,asset.marketToken);
   const cached=getCachedMarkets()[asset.key];
-  if(ethereum){
+  if(sourceMarket){
     const market={
-      price:ethereum.price,
-      change24h:ethereum.change24h,
-      source:'Ethereum DexScreener',
-      pair:ethereum.pair,
-      ethereumLiquidity:ethereum.liquidity,
+      price:sourceMarket.price,
+      change24h:sourceMarket.change24h,
+      source:`${asset.marketChainLabel} DexScreener`,
+      pair:sourceMarket.pair,
+      marketLiquidity:sourceMarket.liquidity,
       pulseLiquidity:pulse?.liquidity||Number(cached?.pulseLiquidity||0),
       cachedAt:Date.now()
     };
@@ -318,9 +324,9 @@ async function fetchAutoPrice(asset){
     return market;
   }
   if(Number(cached?.price)>0){
-    return {...cached,pulseLiquidity:pulse?.liquidity||Number(cached.pulseLiquidity||0),source:`Cached Ethereum price · ${formatCacheAge(cached.cachedAt)} old`,cached:true};
+    return {...cached,marketLiquidity:Number(cached.marketLiquidity??cached.ethereumLiquidity??0),pulseLiquidity:pulse?.liquidity||Number(cached.pulseLiquidity||0),source:`Cached ${asset.marketChainLabel} price · ${formatCacheAge(cached.cachedAt)} old`,cached:true};
   }
-  return {price:0,change24h:NaN,source:'Ethereum price unavailable · no cache yet',ethereumLiquidity:0,pulseLiquidity:pulse?.liquidity||0};
+  return {price:0,change24h:NaN,source:`${asset.marketChainLabel} price unavailable · no cache yet`,marketLiquidity:0,pulseLiquidity:pulse?.liquidity||0};
 }
 
 async function loadPricesAndDecimals(){
@@ -374,8 +380,8 @@ function render(){
     const t=totals[a.key],d=state.decimals[a.key]??18,pi=state.prices[a.key]||{price:0,source:'Unavailable'};
     const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending;
     return `<article class="panel asset">
-      <div class="assetHead"><div class="ticker"><div class="coin">${i===0?'N':i===1?'A':'G'}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
-      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}</div><div>Ethereum · ${fmtUsd(pi.ethereumLiquidity)} liq</div><div>PulseChain · ${fmtUsd(pi.pulseLiquidity)} liq</div></div></div>
+      <div class="assetHead"><div class="ticker"><div class="coin">${a.icon}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
+      <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}</div><div>${a.marketChainLabel} · ${fmtUsd(pi.marketLiquidity??pi.ethereumLiquidity)} liq</div><div>PulseChain · ${fmtUsd(pi.pulseLiquidity)} liq</div></div></div>
       <div class="assetGrid">
         <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(t.paid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(paidN*pi.price)}</div></div>
         <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(t.pending,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(pendingN*pi.price)}</div></div>
@@ -405,7 +411,7 @@ function renderSettings(){
   document.querySelectorAll('[data-price]').forEach(el=>el.addEventListener('change',()=>{
     const m=getManualPrices(),v=Number(el.value); if(Number.isFinite(v)&&v>0)m[el.dataset.price]=v;else delete m[el.dataset.price]; saveManualPrices(m); loadAll();
   }));
-  $('contractList').innerHTML=ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} PulseChain payout token: <code>${a.payoutToken}</code><br>${a.symbol} Ethereum pricing token: <code>${a.ethereumToken}</code></div>`).join('');
+  $('contractList').innerHTML=ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} PulseChain payout token: <code>${a.payoutToken}</code><br>${a.symbol} ${a.marketChainLabel} pricing token: <code>${a.marketToken}</code></div>`).join('');
 }
 
 $('loadBtn').addEventListener('click',loadAll);

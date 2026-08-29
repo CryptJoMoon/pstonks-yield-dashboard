@@ -1,16 +1,16 @@
 # pSTONKS Yield Dashboard
 
-Static PulseChain dashboard for tracking pNVDA, pAAPL and pGOOGL rewards.
+Static PulseChain dashboard for tracking pNVDA, pAAPL, pGOOGL, pHOOD and pSPCX rewards.
 
 ## What it does
 
 - Accepts one or many wallet addresses.
 - Remembers wallets in the visitor's browser via `localStorage`.
-- Reads `pendingYields(wallet, 0)` from each pSTONKS sub-token contract.
-- Reads `userYieldsPaid(wallet, payoutToken)` from each pSTONKS sub-token contract.
+- Reads `pendingYields(wallet, 0)` and `userYieldsPaid(wallet, payoutToken)` from the original pSTONKS contracts.
+- Reads `withdrawableRewardsOf(wallet)` and `withdrawnRewardsOf(wallet)` from the newer pSTONKS reward contracts.
 - Queries payout-token decimals directly from PulseChain.
 - Aggregates paid, remaining due, and total earned per token and per wallet.
-- Pulls USD market pricing from the most liquid PulseChain DexScreener pair for each payout token.
+- Pulls USD market pricing from the deepest source-chain DexScreener pair (Ethereum for Ondo assets; BSC for TokensExpress assets) and displays PulseChain liquidity separately.
 - Supports manual USD price overrides if a market price is missing or unsuitable.
 - Requires no wallet connection and no signature.
 
@@ -36,6 +36,10 @@ You can also drag-and-drop the folder using Cloudflare Pages' direct-upload flow
   - payout: AAPLon Pulse `0x71836318ddd9bd0a301ef36bf0c4e97154767599`
 - pGOOGL: `0x208b7c6363e7185a5f0477f5b08433aeeab1803b`
   - payout: GOOGLon Pulse `0xf04286db459d2378586a9dae0f1425c7e46ef181`
+- pHOOD: `0xea0b2d8ec9eee5f3305e5c91764c4d50d51eeac8`
+  - payout: Robinhood from BSC (TokensExpress) / HOODB `0x4dcaea2eaed7bb3ccfa1cfec5d6ffdd43e063298`
+- pSPCX: `0x1a1bad21b92ec7d8d7bb2181602e3429195650ae`
+  - payout: SpaceX from BSC (TokensExpress) / SPCXB `0xb75708b81bc78006d56b9ce7485a9256226e0437`
 
 ## Important note about USD values
 
