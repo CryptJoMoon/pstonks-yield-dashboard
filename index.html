@@ -60,7 +60,7 @@
     .pill{font-size:12px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.23);color:#c8bad8}
     .pill.ok{border-color:rgba(130,255,41,.26);color:#caffaa}
     .pill.warn{border-color:rgba(255,179,71,.25);color:#ffd59c}
-    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+    .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
     .summaryCard{padding:20px;border-radius:20px;border:1px solid var(--border);background:linear-gradient(145deg,rgba(29,13,51,.96),rgba(10,6,18,.92));box-shadow:var(--shadow);position:relative;overflow:hidden}
     .summaryCard:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;right:-45px;top:-55px;background:var(--purple);filter:blur(48px);opacity:.18}
     .summaryCard.pending:after{background:var(--green)}
@@ -92,7 +92,7 @@
     .sectionHeader{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
     .sectionHeader h2{margin:0;font-size:18px}
     .tableWrap{overflow:auto;border-radius:13px;border:1px solid rgba(255,255,255,.07)}
-    table{border-collapse:collapse;width:100%;min-width:1020px;background:rgba(4,2,8,.42)}
+    table{border-collapse:collapse;width:100%;min-width:2200px;background:rgba(4,2,8,.42)}
     th,td{text-align:right;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.065);font-size:12px;font-variant-numeric:tabular-nums}
     th{position:sticky;top:0;background:#100918;color:#a997bd;text-transform:uppercase;letter-spacing:.08em;font-size:10px;z-index:1}
     th:first-child,td:first-child{text-align:left}
@@ -156,6 +156,11 @@
         <div class="big" id="sumEarnedUsd">$0.00</div>
         <div class="sub" id="sumEarnedSub">Paid + remaining due</div>
       </article>
+      <article class="summaryCard pending">
+        <div class="kicker">pSTONKS Holdings</div>
+        <div class="big" id="sumPStonksSellUsd">$0.00</div>
+        <div class="sub" id="sumPStonksSub">Estimated sell value · spot value $0.00</div>
+      </article>
     </section>
 
     <section class="assets" id="assets"></section>
@@ -169,6 +174,7 @@
       <details>
         <summary>Price settings & contract details</summary>
         <p class="hint">USD prices and 24-hour changes are automatically pulled from the deepest source-chain DexScreener pair for each payout asset (Ethereum for Ondo assets and BSC for TokensExpress assets). The last valid market result is saved in this browser and used if DexScreener is temporarily unavailable, so an API failure does not value an asset at zero. Source-chain and PulseChain liquidity are shown separately. A manual value always overrides auto pricing.</p>
+        <p class="hint">pSTONKS spot values use each token's primary pTOKEN/WPLS pool. Estimated sell values use live pool reserves, the contract's current sell fee, and PulseX V2's 0.29% swap fee. They include price impact but exclude gas and are estimates, not guaranteed quotes.</p>
         <div class="settingsGrid" id="priceSettings"></div>
         <div class="contractList" id="contractList"></div>
       </details>
@@ -183,6 +189,7 @@ const DEX_API = 'https://api.dexscreener.com/latest/dex/tokens/';
 const STORAGE_WALLETS = 'pstonks-dashboard-wallets-v1';
 const STORAGE_PRICES = 'pstonks-dashboard-prices-v1';
 const STORAGE_MARKETS = 'pstonks-dashboard-markets-v1';
+const STORAGE_PMARKETS = 'pstonks-dashboard-pmarkets-v1';
 
 // Selectors confirmed from the contract read interface shown by the user.
 const SELECTOR_PENDING = 'e4f8d62e'; // pendingYields(address,uint256)
@@ -190,16 +197,23 @@ const SELECTOR_PAID = '1781d159';    // userYieldsPaid(address,address)
 const SELECTOR_REWARDS_PENDING = '7cd0b5c7'; // withdrawableRewardsOf(address)
 const SELECTOR_REWARDS_PAID = '18f9e291';    // withdrawnRewardsOf(address)
 const SELECTOR_DECIMALS = '313ce567';
+const SELECTOR_BALANCE = '70a08231';
+const SELECTOR_TOKEN0 = '0dfe1681';
+const SELECTOR_RESERVES = '0902f1ac';
+const SELECTOR_OLD_SELL_FEE = 'cb78c163'; // getTotalTaxs()
+const SELECTOR_NEW_FEES = 'c56f84cf';    // totalFeeBps() => buy, sell, transfer
+const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
+const AMM_FEE_BPS = 29n;
 
 const ASSETS = [
-  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', icon:'N', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af', marketToken:'0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
-  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', icon:'A', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599', marketToken:'0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
-  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', icon:'G', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181', marketToken:'0xba47214edd2bb43099611b208f75e4b42fdcfedc', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
-  { key:'hood', sub:'pHOOD', payout:'Robinhood from BSC (TokensExpress)', symbol:'HOODB', icon:'H', tracking:'rewards', yieldContract:'0xea0b2d8ec9eee5f3305e5c91764c4d50d51eeac8', payoutToken:'0x4dcaea2eaed7bb3ccfa1cfec5d6ffdd43e063298', marketToken:'0xa394dcea3fd3847fd793afbfd163e2e3858b7c65', marketChainId:'bsc', marketChainLabel:'BSC' },
-  { key:'spcx', sub:'pSPCX', payout:'SpaceX from BSC (TokensExpress)', symbol:'SPCXB', icon:'X', tracking:'rewards', yieldContract:'0x1a1bad21b92ec7d8d7bb2181602e3429195650ae', payoutToken:'0xb75708b81bc78006d56b9ce7485a9256226e0437', marketToken:'0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1', marketChainId:'bsc', marketChainLabel:'BSC' }
+  { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', icon:'N', pPair:'0xf1ded03a40ba3b46203c59a2093c9e8482814142', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af', marketToken:'0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
+  { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', icon:'A', pPair:'0x2812befdcaad39219e43fbe019970f067f17d550', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599', marketToken:'0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
+  { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', icon:'G', pPair:'0xcdec09581d6e71e5a157b8d4bf11910d4f9e5170', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181', marketToken:'0xba47214edd2bb43099611b208f75e4b42fdcfedc', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
+  { key:'hood', sub:'pHOOD', payout:'Robinhood from BSC (TokensExpress)', symbol:'HOODB', icon:'H', tracking:'rewards', pPair:'0x417032ef7885c1d18adb5ca2579b000ad19842db', yieldContract:'0xea0b2d8ec9eee5f3305e5c91764c4d50d51eeac8', payoutToken:'0x4dcaea2eaed7bb3ccfa1cfec5d6ffdd43e063298', marketToken:'0xa394dcea3fd3847fd793afbfd163e2e3858b7c65', marketChainId:'bsc', marketChainLabel:'BSC' },
+  { key:'spcx', sub:'pSPCX', payout:'SpaceX from BSC (TokensExpress)', symbol:'SPCXB', icon:'X', tracking:'rewards', pPair:'0xaa2cc4dc83d9a5d280ab0000f19f76db1f7a350e', yieldContract:'0x1a1bad21b92ec7d8d7bb2181602e3429195650ae', payoutToken:'0xb75708b81bc78006d56b9ce7485a9256226e0437', marketToken:'0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1', marketChainId:'bsc', marketChainLabel:'BSC' }
 ];
 
-const state = { wallets:[], rows:[], prices:{}, decimals:{}, loading:false, lastUpdated:null };
+const state = { wallets:[], rows:[], prices:{}, decimals:{}, pDecimals:{}, pMarkets:{}, pSellFees:{}, loading:false, lastUpdated:null };
 const $ = id => document.getElementById(id);
 
 function isAddress(v){ return /^0x[0-9a-fA-F]{40}$/.test(v); }
@@ -212,6 +226,11 @@ function padWord(hexNo0x){ return hexNo0x.toLowerCase().padStart(64,'0'); }
 function encAddress(a){ return padWord(a.replace(/^0x/,'').toLowerCase()); }
 function encUint(v){ return BigInt(v).toString(16).padStart(64,'0'); }
 function decodeUint(hex){ if(!hex || hex==='0x') return 0n; return BigInt(hex); }
+function decodeAddress(hex){ return hex && hex!=='0x' ? '0x'+hex.slice(-40).toLowerCase() : ''; }
+function decodeWords(hex){
+  const body=String(hex||'').replace(/^0x/,'');
+  return Array.from({length:Math.floor(body.length/64)},(_,i)=>BigInt('0x'+body.slice(i*64,(i+1)*64)));
+}
 
 async function rpcCall(to,data){
   const res = await fetch(RPC,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',params:[{to,data},'latest']})});
@@ -234,6 +253,7 @@ async function getPaid(asset,wallet){
   const data='0x'+SELECTOR_PAID+encAddress(wallet)+encAddress(asset.payoutToken);
   return decodeUint(await rpcCall(asset.yieldContract,data));
 }
+async function getBalance(token,wallet){ return decodeUint(await rpcCall(token,'0x'+SELECTOR_BALANCE+encAddress(wallet))); }
 function formatUnits(raw, decimals=18, maxFrac=8){
   raw=BigInt(raw); const neg=raw<0n; if(neg) raw=-raw;
   const s=raw.toString().padStart(decimals+1,'0');
@@ -268,6 +288,11 @@ function getCachedMarkets(){ try{return JSON.parse(localStorage.getItem(STORAGE_
 function saveCachedMarket(key,market){
   const cache=getCachedMarkets(); cache[key]=market;
   localStorage.setItem(STORAGE_MARKETS,JSON.stringify(cache));
+}
+function getCachedPMarkets(){ try{return JSON.parse(localStorage.getItem(STORAGE_PMARKETS)||'{}')}catch{return{}} }
+function saveCachedPMarket(key,market){
+  const cache=getCachedPMarkets(); cache[key]=market;
+  localStorage.setItem(STORAGE_PMARKETS,JSON.stringify(cache));
 }
 function formatCacheAge(timestamp){
   const ms=Math.max(0,Date.now()-Number(timestamp||0));
@@ -332,11 +357,55 @@ async function fetchAutoPrice(asset){
   return {price:0,change24h:NaN,source:`${asset.marketChainLabel} price unavailable · no cache yet`,marketLiquidity:0,pulseLiquidity:pulse?.liquidity||0};
 }
 
+async function fetchPTokenMarket(asset){
+  const pairs=await fetchDexPairs(asset.yieldContract);
+  const pair=pairs.find(p=>String(p.chainId).toLowerCase()==='pulsechain'&&String(p.pairAddress).toLowerCase()===asset.pPair);
+  const market=pair&&marketFromPair(pair,asset.yieldContract);
+  const [token0Raw,reservesRaw]=await Promise.all([
+    rpcCall(asset.pPair,'0x'+SELECTOR_TOKEN0),
+    rpcCall(asset.pPair,'0x'+SELECTOR_RESERVES)
+  ]);
+  const token0=decodeAddress(token0Raw),words=decodeWords(reservesRaw);
+  const pIs0=token0===asset.yieldContract;
+  const reserveIn=pIs0?words[0]:words[1],reserveOut=pIs0?words[1]:words[0];
+  const cached=getCachedPMarkets()[asset.key];
+  const native=Number(pair?.priceNative),livePrice=Number(market?.price||0);
+  const liveWplsUsd=livePrice>0&&native>0?livePrice/native:0;
+  const price=livePrice||Number(cached?.price||0),wplsUsd=liveWplsUsd||Number(cached?.wplsUsd||0);
+  const result={price,wplsUsd,liquidity:Number(market?.liquidity||cached?.liquidity||0),reserveIn,reserveOut,pair:asset.pPair,cached:!livePrice};
+  if(livePrice&&liveWplsUsd) saveCachedPMarket(asset.key,{price:livePrice,wplsUsd:liveWplsUsd,liquidity:result.liquidity,cachedAt:Date.now()});
+  return result;
+}
+
+async function fetchSellFeeBps(asset){
+  try{
+    const words=decodeWords(await rpcCall(asset.yieldContract,'0x'+(asset.tracking==='rewards'?SELECTOR_NEW_FEES:SELECTOR_OLD_SELL_FEE)));
+    return asset.tracking==='rewards'?words[1]:words[0];
+  }catch{return 550n}
+}
+
+function estimateSellUsd(raw,asset){
+  const m=state.pMarkets[asset.key];
+  if(!m||raw<=0n||!m.reserveIn||!m.reserveOut||!(m.wplsUsd>0)) return 0;
+  const sellFee=state.pSellFees[asset.key]??550n;
+  const received=raw*(10000n-sellFee)/10000n;
+  const feeAdjusted=received*(10000n-AMM_FEE_BPS);
+  const out=feeAdjusted*m.reserveOut/(m.reserveIn*10000n+feeAdjusted);
+  return unitsNumber(out,18)*m.wplsUsd;
+}
+
+function pSpotUsd(raw,asset){
+  return unitsNumber(raw,state.pDecimals[asset.key]??18)*(state.pMarkets[asset.key]?.price||0);
+}
+
 async function loadPricesAndDecimals(){
   const manual=getManualPrices();
   await Promise.all(ASSETS.map(async a=>{
-    const [dec, auto]=await Promise.all([getDecimals(a.payoutToken),fetchAutoPrice(a)]);
+    const [dec,pDec,auto,pMarket,sellFee]=await Promise.all([getDecimals(a.payoutToken),getDecimals(a.yieldContract),fetchAutoPrice(a),fetchPTokenMarket(a),fetchSellFeeBps(a)]);
     state.decimals[a.key]=dec;
+    state.pDecimals[a.key]=pDec;
+    state.pMarkets[a.key]=pMarket;
+    state.pSellFees[a.key]=sellFee;
     const man=Number(manual[a.key]);
     state.prices[a.key]={...auto,price:(Number.isFinite(man)&&man>0)?man:auto.price,manual:(Number.isFinite(man)&&man>0)};
   }));
@@ -352,8 +421,8 @@ async function loadAll(){
     await loadPricesAndDecimals();
     const jobs=[];
     for(const wallet of wallets) for(const asset of ASSETS) jobs.push((async()=>{
-      const [paid,pending]=await Promise.all([getPaid(asset,wallet),getPending(asset,wallet)]);
-      return {wallet,key:asset.key,paid,pending};
+      const [paid,pending,balance]=await Promise.all([getPaid(asset,wallet),getPending(asset,wallet),getBalance(asset.yieldContract,wallet)]);
+      return {wallet,key:asset.key,paid,pending,balance};
     })());
     state.rows=await Promise.all(jobs);
     state.lastUpdated=new Date();
@@ -364,24 +433,29 @@ async function loadAll(){
 function setStatus(text,kind=''){ $('statusBar').innerHTML=`<span class="pill ${kind}">${text}</span>`; }
 
 function aggregate(){
-  const out={}; ASSETS.forEach(a=>out[a.key]={paid:0n,pending:0n});
-  state.rows.forEach(r=>{out[r.key].paid+=r.paid;out[r.key].pending+=r.pending});
+  const out={}; ASSETS.forEach(a=>out[a.key]={paid:0n,pending:0n,balance:0n});
+  state.rows.forEach(r=>{out[r.key].paid+=r.paid;out[r.key].pending+=r.pending;out[r.key].balance+=r.balance||0n});
   return out;
 }
 function render(){
   const totals=aggregate();
-  let paidUsd=0,pendingUsd=0;
+  let paidUsd=0,pendingUsd=0,pSpotTotal=0,pSellTotal=0;
   ASSETS.forEach(a=>{
     const d=state.decimals[a.key]??18,p=state.prices[a.key]?.price||0,t=totals[a.key];
     paidUsd+=unitsNumber(t.paid,d)*p; pendingUsd+=unitsNumber(t.pending,d)*p;
+    pSpotTotal+=pSpotUsd(t.balance,a); pSellTotal+=estimateSellUsd(t.balance,a);
   });
   $('sumPaidUsd').textContent=fmtUsd(paidUsd); $('sumPendingUsd').textContent=fmtUsd(pendingUsd); $('sumEarnedUsd').textContent=fmtUsd(paidUsd+pendingUsd);
   $('sumPaidSub').textContent=`Across ${state.wallets.length} saved wallet${state.wallets.length===1?'':'s'}`;
   $('sumPendingSub').textContent='Pending yields remaining to claim'; $('sumEarnedSub').textContent='Paid + pending at current market prices';
+  $('sumPStonksSellUsd').textContent=fmtUsd(pSellTotal);
+  $('sumPStonksSub').textContent=`Estimated sell value · spot value ${fmtUsd(pSpotTotal)}`;
 
   $('assets').innerHTML=ASSETS.map((a,i)=>{
     const t=totals[a.key],d=state.decimals[a.key]??18,pi=state.prices[a.key]||{price:0,source:'Unavailable'};
-    const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending;
+    const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending,pd=state.pDecimals[a.key]??18;
+    const pMarket=state.pMarkets[a.key]||{},spot=pSpotUsd(t.balance,a),sell=estimateSellUsd(t.balance,a),discount=spot>0?(1-sell/spot)*100:0;
+    const sellFee=Number(state.pSellFees[a.key]??550n)/100;
     return `<article class="panel asset">
       <div class="assetHead"><div class="ticker"><div class="coin">${a.icon}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
       <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}</div><div>${a.marketChainLabel} · ${fmtUsd(pi.marketLiquidity??pi.ethereumLiquidity)} liq</div><div>PulseChain · ${fmtUsd(pi.pulseLiquidity)} liq</div></div></div>
@@ -389,6 +463,7 @@ function render(){
         <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(t.paid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(paidN*pi.price)}</div></div>
         <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(t.pending,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(pendingN*pi.price)}</div></div>
         <div class="metric full"><div class="metricLabel">Total Earned</div><div class="metricVal">${formatUnits(earned,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd((paidN+pendingN)*pi.price)}</div></div>
+        <div class="metric full"><div class="metricLabel">${a.sub} Held</div><div class="metricVal">${formatUnits(t.balance,pd)} ${a.sub}</div><div class="metricUsd">1 ${a.sub} = ${fmtPrice(pMarket.price)} · spot ${fmtUsd(spot)} · est. sell ${fmtUsd(sell)}${spot>0?` · ${discount.toFixed(1)}% below spot`:''} · ${sellFee.toFixed(2)}% sell fee</div></div>
       </div></article>`;
   }).join('');
   renderWalletTable(); renderSettings();
@@ -396,17 +471,18 @@ function render(){
 function renderWalletTable(){
   $('walletCount').textContent=`${state.wallets.length} wallet${state.wallets.length===1?'':'s'}`;
   if(!state.wallets.length){$('walletTable').innerHTML='<div class="empty">Add a wallet above to load pSTONKS earnings.</div>';return}
-  const heads=ASSETS.map(a=>`<th>${a.symbol} Paid</th><th>${a.symbol} Due</th>`).join('');
+  const heads=ASSETS.map(a=>`<th>${a.symbol} Paid</th><th>${a.symbol} Due</th><th>${a.sub} Held</th><th>${a.sub} Est. Sell</th>`).join('');
   const rows=state.wallets.map(w=>{
-    let walletUsd=0;
+    let walletUsd=0,walletPSell=0;
     const cells=ASSETS.map(a=>{
-      const r=state.rows.find(x=>x.wallet===w&&x.key===a.key)||{paid:0n,pending:0n}; const d=state.decimals[a.key]??18,p=state.prices[a.key]?.price||0;
+      const r=state.rows.find(x=>x.wallet===w&&x.key===a.key)||{paid:0n,pending:0n,balance:0n}; const d=state.decimals[a.key]??18,pd=state.pDecimals[a.key]??18,p=state.prices[a.key]?.price||0;
       walletUsd+=(unitsNumber(r.paid,d)+unitsNumber(r.pending,d))*p;
-      return `<td>${formatUnits(r.paid,d)}</td><td>${formatUnits(r.pending,d)}</td>`;
+      const pSell=estimateSellUsd(r.balance,a); walletPSell+=pSell;
+      return `<td>${formatUnits(r.paid,d)}</td><td>${formatUnits(r.pending,d)}</td><td>${formatUnits(r.balance,pd)}</td><td class="usd">${fmtUsd(pSell)}</td>`;
     }).join('');
-    return `<tr><td class="addr" title="${w}">${shortAddr(w)}</td>${cells}<td class="usd"><strong>${fmtUsd(walletUsd)}</strong></td></tr>`;
+    return `<tr><td class="addr" title="${w}">${shortAddr(w)}</td>${cells}<td class="usd"><strong>${fmtUsd(walletUsd)}</strong></td><td class="usd"><strong>${fmtUsd(walletPSell)}</strong></td></tr>`;
   }).join('');
-  $('walletTable').innerHTML=`<div class="tableWrap"><table><thead><tr><th>Wallet</th>${heads}<th>Total USD</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  $('walletTable').innerHTML=`<div class="tableWrap"><table><thead><tr><th>Wallet</th>${heads}<th>Earnings USD</th><th>pSTONKS Est. Sell</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function renderSettings(){
   const manual=getManualPrices();
