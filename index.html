@@ -191,7 +191,7 @@ const RPC = 'https://rpc.pulsechain.com';
 const DEX_API = 'https://api.dexscreener.com/latest/dex/tokens/';
 const STORAGE_WALLETS = 'pstonks-dashboard-wallets-v1';
 const STORAGE_PRICES = 'pstonks-dashboard-prices-v1';
-const STORAGE_MARKETS = 'pstonks-dashboard-markets-v1';
+const STORAGE_MARKETS = 'pstonks-dashboard-markets-v2';
 const STORAGE_PMARKETS = 'pstonks-dashboard-pmarkets-v1';
 
 // Selectors confirmed from the contract read interface shown by the user.
@@ -207,6 +207,19 @@ const SELECTOR_OLD_SELL_FEE = 'cb78c163'; // getTotalTaxs()
 const SELECTOR_NEW_FEES = 'c56f84cf';    // totalFeeBps() => buy, sell, transfer
 const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
 const AMM_FEE_BPS = 29n;
+const TRUSTED_PRICE_QUOTES = {
+  ethereum: new Set([
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
+    '0xdac17f958d2ee523a2206206994597c13d831ec7',  // USDT
+    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',  // WETH
+    '0x0000000000000000000000000000000000000000'   // native ETH pools
+  ]),
+  bsc: new Set([
+    '0x55d398326f99059ff775485246999027b3197955', // USDT
+    '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', // USDC
+    '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'  // WBNB
+  ])
+};
 
 const ASSETS = [
   { key:'nvda', sub:'pNVDA', payout:'NVDAon Pulse', symbol:'NVDAon', icon:'N', pPair:'0xf1ded03a40ba3b46203c59a2093c9e8482814142', yieldContract:'0xb78c098f3ce7d894bc77dd85922af0d439d8e7cb', payoutToken:'0x6e1de1e0bc3ff2fd2072304e977f3193c3eb08af', marketToken:'0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
@@ -327,9 +340,17 @@ function marketFromPair(pair,token){
   if(!Number.isFinite(price)||price<=0) return null;
   return {price,change24h,liquidity:Number(pair.liquidity?.usd||0),pair:pair.pairAddress};
 }
-function deepestMarket(pairs,chainId,token){
+function deepestMarket(pairs,chainId,token,trustedQuotes){
+  const wanted=token.toLowerCase();
   return pairs
     .filter(p=>String(p.chainId||'').toLowerCase()===chainId)
+    .filter(p=>{
+      if(!trustedQuotes) return true;
+      const base=String(p.baseToken?.address||'').toLowerCase();
+      const quote=String(p.quoteToken?.address||'').toLowerCase();
+      const paired=base===wanted?quote:quote===wanted?base:'';
+      return trustedQuotes.has(paired);
+    })
     .map(p=>marketFromPair(p,token)).filter(Boolean)
     .sort((a,b)=>b.liquidity-a.liquidity)[0];
 }
@@ -339,7 +360,7 @@ async function fetchAutoPrice(asset){
     fetchDexPairs(asset.marketToken)
   ]);
   const pulse=deepestMarket(pulsePairs,'pulsechain',asset.payoutToken);
-  const sourceMarket=deepestMarket(sourcePairs,asset.marketChainId,asset.marketToken);
+  const sourceMarket=deepestMarket(sourcePairs,asset.marketChainId,asset.marketToken,TRUSTED_PRICE_QUOTES[asset.marketChainId]);
   const cached=getCachedMarkets()[asset.key];
   if(sourceMarket){
     const market={
