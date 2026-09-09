@@ -91,6 +91,7 @@
     .metricLabel{font-size:10px;color:#a89ab8;text-transform:uppercase;letter-spacing:.12em;font-weight:900}
     .metricVal{font-size:18px;font-weight:900;margin-top:5px;font-variant-numeric:tabular-nums;word-break:break-word}
     .metricUsd{font-size:11px;color:#a99bbd;margin-top:2px}
+    .metricBreakdown{font-size:10px;color:#c7b7d8;margin-top:5px;line-height:1.45}.metricBreakdown strong{color:#dfffca}
     .section{padding:18px;margin-bottom:14px}
     .sectionHeader{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
     .sectionHeader h2{margin:0;font-size:18px}
@@ -610,16 +611,18 @@ function render(){
 
   $('assets').innerHTML=ASSETS.map((a,i)=>{
     const t=totals[a.key],d=state.decimals[a.key]??18,pi=state.prices[a.key]||{price:0,source:'Unavailable'};
-    const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),earned=t.paid+t.pending,pd=state.pDecimals[a.key]??18;
+    const nftClaimed=state.nftRows.reduce((sum,n)=>sum+(n.claimed[a.key]||0n),0n),nftClaimable=state.nftRows.reduce((sum,n)=>sum+(n.claimable[a.key]||0n),0n);
+    const combinedPaid=t.paid+nftClaimed,combinedDue=t.pending+nftClaimable,combinedEarned=combinedPaid+combinedDue;
+    const paidN=unitsNumber(t.paid,d),pendingN=unitsNumber(t.pending,d),nftClaimedN=unitsNumber(nftClaimed,d),nftClaimableN=unitsNumber(nftClaimable,d),pd=state.pDecimals[a.key]??18;
     const pMarket=state.pMarkets[a.key]||{},spot=pSpotUsd(t.balance,a),sell=estimateSellUsd(t.balance,a),discount=spot>0?(1-sell/spot)*100:0;
     const sellFee=Number(state.pSellFees[a.key]??550n)/100;
     return `<article class="panel asset">
       <div class="assetHead"><div class="ticker"><div class="coin">${a.icon}</div><div>${a.sub}<div class="hint" style="margin:1px 0 0">Pays ${a.symbol}</div></div></div>
       <div class="price"><strong>${fmtPrice(pi.price)}</strong>${fmtPriceChange(pi.change24h)}<div>${pi.manual?'Manual price':pi.source}</div><div>${a.marketChainLabel} · ${fmtUsd(pi.marketLiquidity??pi.ethereumLiquidity)} liq</div><div>PulseChain · ${fmtUsd(pi.pulseLiquidity)} liq</div></div></div>
       <div class="assetGrid">
-        <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(t.paid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(paidN*pi.price)}</div></div>
-        <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(t.pending,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd(pendingN*pi.price)}</div></div>
-        <div class="metric full"><div class="metricLabel">Total Earned</div><div class="metricVal">${formatUnits(earned,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd((paidN+pendingN)*pi.price)}</div></div>
+        <div class="metric"><div class="metricLabel">Already Paid</div><div class="metricVal">${formatUnits(combinedPaid,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd((paidN+nftClaimedN)*pi.price)}</div><div class="metricBreakdown">pSTONKS <strong>${fmtUsd(paidN*pi.price)}</strong><br>NFTs <strong>${fmtUsd(nftClaimedN*pi.price)}</strong></div></div>
+        <div class="metric"><div class="metricLabel">Remaining Due</div><div class="metricVal">${formatUnits(combinedDue,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd((pendingN+nftClaimableN)*pi.price)}</div><div class="metricBreakdown">pSTONKS <strong>${fmtUsd(pendingN*pi.price)}</strong><br>NFTs <strong>${fmtUsd(nftClaimableN*pi.price)}</strong></div></div>
+        <div class="metric full"><div class="metricLabel">Total Earned</div><div class="metricVal">${formatUnits(combinedEarned,d)} ${a.symbol}</div><div class="metricUsd">${fmtUsd((paidN+pendingN+nftClaimedN+nftClaimableN)*pi.price)}</div><div class="metricBreakdown">pSTONKS <strong>${fmtUsd((paidN+pendingN)*pi.price)}</strong> · NFTs <strong>${fmtUsd((nftClaimedN+nftClaimableN)*pi.price)}</strong></div></div>
         <div class="metric full"><div class="metricLabel">${a.sub} Held</div><div class="metricVal">${formatUnits(t.balance,pd)} ${a.sub}</div><div class="metricUsd">1 ${a.sub} = ${fmtPrice(pMarket.price)} · spot ${fmtUsd(spot)} · est. sell ${fmtUsd(sell)}${spot>0?` · ${discount.toFixed(1)}% below spot`:''} · ${sellFee.toFixed(2)}% sell fee</div></div>
       </div></article>`;
   }).join('');
