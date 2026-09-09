@@ -98,6 +98,9 @@
     table{border-collapse:collapse;width:100%;min-width:2200px;background:rgba(4,2,8,.42)}
     table.nftTable{min-width:900px}
     table.nftWalletTable{min-width:1050px}
+    .nftIdentity{display:flex;align-items:center;gap:10px;min-width:190px}
+    .nftImage{width:54px;height:54px;object-fit:cover;border-radius:11px;border:1px solid rgba(181,76,255,.45);background:#100918}
+    .nftAmounts{line-height:1.55;white-space:nowrap}.nftAmounts span{display:block;color:var(--muted);font-size:10px}.nftAmounts strong{color:var(--text);font-size:12px}
     th,td{text-align:right;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.065);font-size:12px;font-variant-numeric:tabular-nums}
     th{position:sticky;top:0;background:#100918;color:#a997bd;text-transform:uppercase;letter-spacing:.08em;font-size:10px;z-index:1}
     th:first-child,td:first-child{text-align:left}
@@ -177,7 +180,7 @@
 
     <section class="panel section">
       <div class="sectionHeader"><h2>pStonk Brokers NFT Earnings</h2><span class="pill" id="nftCount">0 NFTs</span></div>
-      <p class="hint">Current claimable dividends are read directly from each NFT ID. Earnings follow the NFT if it is transferred, and rarity weight determines its share.</p>
+      <p class="hint">Claimed and claimable dividends are read directly from the NFTs currently held by the tracked wallets. Earnings follow the NFT if it is transferred, and rarity weight determines its share.</p>
       <div id="nftStats"><div class="empty">Add a wallet above to load NFT earnings.</div></div>
     </section>
 
@@ -218,9 +221,8 @@ const SELECTOR_NFTS_OF_OWNER = '8462151c'; // tokensOfOwner(address)
 const SELECTOR_NFT_RARITY = 'dd3b5f9a';   // rarityOf(uint256)
 const SELECTOR_NFT_WEIGHT = '0767d178';   // weightOf(uint256)
 const SELECTOR_NFT_CLAIMABLE = '79f17c90'; // releasableBatchDividends(uint256)
-const SELECTOR_TOTAL_DISTRIBUTABLE = '03a6f768';
-const SELECTOR_TOTAL_RELEASED = 'd79779b2';
-const SELECTOR_UNDISTRIBUTED_DUST = 'fe51050a';
+const SELECTOR_NFT_RELEASED = 'cfe83070';  // released(address,uint256)
+const SELECTOR_TOKEN_URI = 'c87b56dd';     // tokenURI(uint256)
 const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
 const AMM_FEE_BPS = 29n;
 const TRUSTED_PRICE_QUOTES = {
@@ -249,7 +251,7 @@ const ASSETS = [
 const NFT_DIVIDEND_KEYS = ['hood','spcx','nvda','googl','aapl'];
 const NFT_RARITIES = ['Unrevealed','Common','Rare','Epic','Legendary'];
 
-const state = { wallets:[], rows:[], prices:{}, decimals:{}, pDecimals:{}, pMarkets:{}, pSellFees:{}, nftRows:[], nftGlobal:{}, nftError:'', loading:false, lastUpdated:null };
+const state = { wallets:[], rows:[], prices:{}, decimals:{}, pDecimals:{}, pMarkets:{}, pSellFees:{}, nftRows:[], nftError:'', loading:false, lastUpdated:null };
 const $ = id => document.getElementById(id);
 
 function isAddress(v){ return /^0x[0-9a-fA-F]{40}$/.test(v); }
@@ -273,6 +275,25 @@ function decodeUintArray(hex){
   const offset=Number(BigInt('0x'+body.slice(0,64)))*2;
   const length=Number(BigInt('0x'+body.slice(offset,offset+64)));
   return Array.from({length},(_,i)=>BigInt('0x'+body.slice(offset+64+i*64,offset+128+i*64)));
+}
+function decodeString(hex){
+  const body=String(hex||'').replace(/^0x/,'');
+  if(body.length<128) return '';
+  const offset=Number(BigInt('0x'+body.slice(0,64)))*2;
+  const length=Number(BigInt('0x'+body.slice(offset,offset+64)));
+  const bytes=body.slice(offset+64,offset+64+length*2).match(/.{1,2}/g)||[];
+  return new TextDecoder().decode(Uint8Array.from(bytes.map(b=>parseInt(b,16))));
+}
+function ipfsUrl(uri){ return String(uri||'').replace(/^ipfs:\/\//,'https://ipfs.io/ipfs/'); }
+async function getNftMetadata(tokenId){
+  try{
+    const uri=decodeString(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_TOKEN_URI+encUint(tokenId)));
+    let meta;
+    if(uri.startsWith('data:application/json;base64,')) meta=JSON.parse(atob(uri.split(',')[1]));
+    else if(uri.startsWith('data:application/json,')) meta=JSON.parse(decodeURIComponent(uri.split(',').slice(1).join(',')));
+    else if(uri){ const res=await fetch(ipfsUrl(uri)); if(res.ok) meta=await res.json(); }
+    return {name:meta?.name||`pStonk Broker #${tokenId}`,image:ipfsUrl(meta?.image||'')};
+  }catch{return {name:`pStonk Broker #${tokenId}`,image:''}}
 }
 
 async function rpcCall(to,data){
@@ -299,33 +320,27 @@ async function getPaid(asset,wallet){
 async function getBalance(token,wallet){ return decodeUint(await rpcCall(token,'0x'+SELECTOR_BALANCE+encAddress(wallet))); }
 async function getNftsOfOwner(wallet){ return decodeUintArray(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFTS_OF_OWNER+encAddress(wallet))); }
 async function getNftClaimable(tokenId){ return decodeUintArray(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_CLAIMABLE+encUint(tokenId))); }
+async function getNftReleased(asset,tokenId){ return decodeUint(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_RELEASED+encAddress(asset.payoutToken)+encUint(tokenId))); }
 async function loadNftStats(wallets){
-  state.nftRows=[]; state.nftGlobal={}; state.nftError='';
+  state.nftRows=[]; state.nftError='';
   try{
     const owned=await Promise.all(wallets.map(async wallet=>({wallet,ids:await getNftsOfOwner(wallet)})));
     const nftJobs=[];
     for(const {wallet,ids} of owned) for(const tokenId of ids) nftJobs.push((async()=>{
-      const [rarityRaw,weightRaw,amounts]=await Promise.all([
+      const [rarityRaw,weightRaw,amounts,metadata,releasedAmounts]=await Promise.all([
         rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_RARITY+encUint(tokenId)),
         rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_WEIGHT+encUint(tokenId)),
-        getNftClaimable(tokenId)
+        getNftClaimable(tokenId),
+        getNftMetadata(tokenId),
+        Promise.all(ASSETS.map(asset=>getNftReleased(asset,tokenId)))
       ]);
-      const claimable={}; NFT_DIVIDEND_KEYS.forEach((key,i)=>claimable[key]=amounts[i]||0n);
-      return {wallet,tokenId,rarity:Number(decodeUint(rarityRaw)),weight:decodeUint(weightRaw),claimable};
+      const claimable={},claimed={};
+      NFT_DIVIDEND_KEYS.forEach((key,i)=>claimable[key]=amounts[i]||0n);
+      ASSETS.forEach((asset,i)=>claimed[asset.key]=releasedAmounts[i]||0n);
+      return {wallet,tokenId,rarity:Number(decodeUint(rarityRaw)),weight:decodeUint(weightRaw),claimable,claimed,...metadata};
     })());
-    const globalJobs=ASSETS.map(async asset=>{
-      const arg=encAddress(asset.payoutToken);
-      const [distributed,released,dust]=await Promise.all([
-        rpcCall(NFT_CONTRACT,'0x'+SELECTOR_TOTAL_DISTRIBUTABLE+arg),
-        rpcCall(NFT_CONTRACT,'0x'+SELECTOR_TOTAL_RELEASED+arg),
-        rpcCall(NFT_CONTRACT,'0x'+SELECTOR_UNDISTRIBUTED_DUST+arg)
-      ]);
-      const lifetime=decodeUint(distributed),claimed=decodeUint(released),unallocated=decodeUint(dust);
-      return [asset.key,{lifetime,claimed,dust:unallocated,available:lifetime-claimed-unallocated}];
-    });
-    const [rows,global]=await Promise.all([Promise.all(nftJobs),Promise.all(globalJobs)]);
+    const rows=await Promise.all(nftJobs);
     state.nftRows=rows.sort((a,b)=>Number(a.tokenId-b.tokenId));
-    state.nftGlobal=Object.fromEntries(global);
   }catch(err){ console.error('NFT stats:',err); state.nftError=err.message||'NFT contract read failed'; }
 }
 function formatUnits(raw, decimals=18, maxFrac=8){
@@ -528,9 +543,12 @@ function render(){
     paidUsd+=unitsNumber(t.paid,d)*p; pendingUsd+=unitsNumber(t.pending,d)*p;
     pSpotTotal+=pSpotUsd(t.balance,a); pSellTotal+=estimateSellUsd(t.balance,a);
   });
-  $('sumPaidUsd').textContent=fmtUsd(paidUsd); $('sumPendingUsd').textContent=fmtUsd(pendingUsd); $('sumEarnedUsd').textContent=fmtUsd(paidUsd+pendingUsd);
-  $('sumPaidSub').textContent=`Across ${state.wallets.length} saved wallet${state.wallets.length===1?'':'s'}`;
-  $('sumPendingSub').textContent='Pending yields remaining to claim'; $('sumEarnedSub').textContent='Paid + pending at current market prices';
+  const nftClaimedUsd=state.nftRows.reduce((sum,n)=>sum+nftAmountsUsd(n.claimed),0);
+  const nftClaimableUsd=state.nftRows.reduce((sum,n)=>sum+nftAmountsUsd(n.claimable),0);
+  $('sumPaidUsd').textContent=fmtUsd(paidUsd+nftClaimedUsd); $('sumPendingUsd').textContent=fmtUsd(pendingUsd+nftClaimableUsd); $('sumEarnedUsd').textContent=fmtUsd(paidUsd+pendingUsd+nftClaimedUsd+nftClaimableUsd);
+  $('sumPaidSub').textContent=`pSTONKS ${fmtUsd(paidUsd)} + NFTs ${fmtUsd(nftClaimedUsd)}`;
+  $('sumPendingSub').textContent=`pSTONKS ${fmtUsd(pendingUsd)} + NFTs ${fmtUsd(nftClaimableUsd)}`;
+  $('sumEarnedSub').textContent='Combined pSTONKS and NFT earnings';
   $('sumPStonksSellUsd').textContent=fmtUsd(pSellTotal);
   $('sumPStonksSub').textContent=`Estimated sell value · spot value ${fmtUsd(pSpotTotal)}`;
 
@@ -568,31 +586,36 @@ function renderWalletTable(){
   }).join('');
   $('walletTable').innerHTML=`<div class="tableWrap"><table><thead><tr><th>Wallet</th>${heads}<th>Earnings USD</th><th>pSTONKS Est. Sell</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
-function claimableUsd(claimable){
-  return ASSETS.reduce((sum,a)=>sum+unitsNumber(claimable[a.key]||0n,state.decimals[a.key]??18)*(state.prices[a.key]?.price||0),0);
+function nftAmountsUsd(amounts){
+  return ASSETS.reduce((sum,a)=>sum+unitsNumber(amounts?.[a.key]||0n,state.decimals[a.key]??18)*(state.prices[a.key]?.price||0),0);
 }
 function renderNftStats(){
   $('nftCount').textContent=`${state.nftRows.length} NFT${state.nftRows.length===1?'':'s'}`;
   if(state.nftError){ $('nftStats').innerHTML=`<div class="empty">NFT earnings are temporarily unavailable: ${state.nftError}</div>`; return; }
   if(!state.wallets.length){ $('nftStats').innerHTML='<div class="empty">Add a wallet above to load NFT earnings.</div>'; return; }
-  const assetHeads=ASSETS.map(a=>`<th>${a.symbol} Claimable</th>`).join('');
-  const globalRows=ASSETS.map(a=>{
-    const g=state.nftGlobal[a.key]||{available:0n,claimed:0n,lifetime:0n,dust:0n},d=state.decimals[a.key]??18,p=state.prices[a.key]?.price||0;
-    return `<tr><td><strong>${a.symbol}</strong></td><td>${formatUnits(g.available,d)}</td><td class="usd">${fmtUsd(unitsNumber(g.available,d)*p)}</td><td>${formatUnits(g.claimed,d)}</td><td>${formatUnits(g.lifetime,d)}</td><td>${formatUnits(g.dust,d)}</td></tr>`;
+  const assetHeads=ASSETS.map(a=>`<th>${a.symbol}</th>`).join('');
+  const trackedByAsset=ASSETS.map(a=>{
+    const claimed=state.nftRows.reduce((sum,n)=>sum+(n.claimed[a.key]||0n),0n);
+    const claimable=state.nftRows.reduce((sum,n)=>sum+(n.claimable[a.key]||0n),0n);
+    const d=state.decimals[a.key]??18,p=state.prices[a.key]?.price||0;
+    return `<tr><td><strong>${a.symbol}</strong></td><td>${formatUnits(claimed,d)}</td><td class="usd">${fmtUsd(unitsNumber(claimed,d)*p)}</td><td>${formatUnits(claimable,d)}</td><td class="usd">${fmtUsd(unitsNumber(claimable,d)*p)}</td><td class="usd"><strong>${fmtUsd(unitsNumber(claimed+claimable,d)*p)}</strong></td></tr>`;
   }).join('');
   const walletRows=state.wallets.map(wallet=>{
-    const owned=state.nftRows.filter(n=>n.wallet===wallet),totals={}; ASSETS.forEach(a=>totals[a.key]=0n);
-    owned.forEach(n=>ASSETS.forEach(a=>totals[a.key]+=n.claimable[a.key]||0n));
-    return `<tr><td class="addr" title="${wallet}">${shortAddr(wallet)}</td><td>${owned.length}</td>${ASSETS.map(a=>`<td>${formatUnits(totals[a.key],state.decimals[a.key]??18)}</td>`).join('')}<td class="usd"><strong>${fmtUsd(claimableUsd(totals))}</strong></td></tr>`;
+    const owned=state.nftRows.filter(n=>n.wallet===wallet);
+    const claimed=owned.reduce((sum,n)=>sum+nftAmountsUsd(n.claimed),0),claimable=owned.reduce((sum,n)=>sum+nftAmountsUsd(n.claimable),0);
+    return `<tr><td class="addr" title="${wallet}">${shortAddr(wallet)}</td><td>${owned.length}</td><td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
   }).join('');
-  const nftRows=state.nftRows.map(n=>`<tr><td><strong>#${n.tokenId}</strong></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</td>`).join('')}<td class="usd"><strong>${fmtUsd(claimableUsd(n.claimable))}</strong></td></tr>`).join('');
+  const nftRows=state.nftRows.map(n=>{
+    const claimed=nftAmountsUsd(n.claimed),claimable=nftAmountsUsd(n.claimable);
+    return `<tr><td><div class="nftIdentity">${n.image?`<img class="nftImage" src="${n.image}" alt="${n.name}" loading="lazy" onerror="this.style.display='none'">`:''}<div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
+  }).join('');
   $('nftStats').innerHTML=`
-    <div class="panelTitle">All 333 NFTs · per stock</div>
-    <div class="tableWrap"><table class="nftTable"><thead><tr><th>Stock</th><th>Available to Claim</th><th>Available USD</th><th>Claimed to Date</th><th>Lifetime Distributed</th><th>Rounding Dust</th></tr></thead><tbody>${globalRows}</tbody></table></div>
+    <div class="panelTitle">Tracked NFTs · per stock</div>
+    <div class="tableWrap"><table class="nftTable"><thead><tr><th>Stock</th><th>Claimed</th><th>Claimed USD</th><th>Claimable</th><th>Claimable USD</th><th>Total Earnings</th></tr></thead><tbody>${trackedByAsset}</tbody></table></div>
     <div class="panelTitle" style="margin-top:20px">Tracked wallets</div>
-    <div class="tableWrap"><table class="nftWalletTable"><thead><tr><th>Wallet</th><th>NFTs</th>${assetHeads}<th>Total USD</th></tr></thead><tbody>${walletRows}</tbody></table></div>
+    <div class="tableWrap"><table class="nftTable"><thead><tr><th>Wallet</th><th>NFTs</th><th>Claimed USD</th><th>Claimable USD</th><th>Total Earnings</th></tr></thead><tbody>${walletRows}</tbody></table></div>
     <div class="panelTitle" style="margin-top:20px">Individual NFTs</div>
-    <div class="tableWrap"><table class="nftWalletTable"><thead><tr><th>NFT</th><th>Owner</th><th>Rarity</th>${assetHeads}<th>Total USD</th></tr></thead><tbody>${nftRows||'<tr><td colspan="9">No pStonk Brokers NFTs found in these wallets.</td></tr>'}</tbody></table></div>`;
+    <div class="tableWrap"><table class="nftWalletTable"><thead><tr><th>NFT</th><th>Owner</th><th>Rarity</th>${assetHeads}<th>Claimed USD</th><th>Claimable USD</th><th>Total Earnings</th></tr></thead><tbody>${nftRows||'<tr><td colspan="11">No pStonk Brokers NFTs found in these wallets.</td></tr>'}</tbody></table></div>`;
 }
 function renderSettings(){
   const manual=getManualPrices();
@@ -605,7 +628,7 @@ function renderSettings(){
 
 $('loadBtn').addEventListener('click',loadAll);
 $('refreshBtn').addEventListener('click',loadAll);
-$('clearBtn').addEventListener('click',()=>{localStorage.removeItem(STORAGE_WALLETS);state.wallets=[];state.rows=[];state.nftRows=[];state.nftGlobal={};state.nftError='';$('walletInput').value='';render();setStatus('Saved wallets cleared.');});
+$('clearBtn').addEventListener('click',()=>{localStorage.removeItem(STORAGE_WALLETS);state.wallets=[];state.rows=[];state.nftRows=[];state.nftError='';$('walletInput').value='';render();setStatus('Saved wallets cleared.');});
 $('walletInput').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')loadAll()});
 
 (function init(){
