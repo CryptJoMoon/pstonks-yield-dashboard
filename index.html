@@ -63,11 +63,12 @@
     .pill{font-size:12px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.23);color:#c8bad8}
     .pill.ok{border-color:rgba(130,255,41,.26);color:#caffaa}
     .pill.warn{border-color:rgba(255,179,71,.25);color:#ffd59c}
-    .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+    .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:14px}
     .summaryCard{padding:20px;border-radius:20px;border:1px solid var(--border);background:linear-gradient(145deg,rgba(29,13,51,.96),rgba(10,6,18,.92));box-shadow:var(--shadow);position:relative;overflow:hidden}
     .summaryCard:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;right:-45px;top:-55px;background:var(--purple);filter:blur(48px);opacity:.18}
     .summaryCard.pending:after{background:var(--green)}
     .summaryCard.total:after{background:var(--pink)}
+    .summaryCard.nftValue:after{background:#ffb62e}
     .kicker{font-size:11px;color:#b6a4cc;font-weight:900;text-transform:uppercase;letter-spacing:.13em}
     .big{font-size:clamp(27px,4vw,46px);font-weight:950;letter-spacing:-.045em;margin-top:5px;font-variant-numeric:tabular-nums}
     .sub{font-size:12px;color:var(--muted);margin-top:4px}
@@ -127,7 +128,7 @@
     .loader{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.22);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;vertical-align:-2px;margin-right:6px}
     @keyframes spin{to{transform:rotate(360deg)}}
     .footer{text-align:center;color:#776985;font-size:11px;margin-top:18px;line-height:1.6}
-    @media(max-width:1100px){.assets{grid-template-columns:repeat(2,minmax(0,1fr))}.asset{grid-column:auto}.asset:nth-child(4){grid-column:auto}.asset:nth-child(5){grid-column:1/-1;width:calc(50% - 7px);justify-self:center}}
+    @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.summaryCard:last-child{grid-column:1/-1}.assets{grid-template-columns:repeat(2,minmax(0,1fr))}.asset{grid-column:auto}.asset:nth-child(4){grid-column:auto}.asset:nth-child(5){grid-column:1/-1;width:calc(50% - 7px);justify-self:center}}
     @media(max-width:900px){.summary{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr}.actions{justify-content:stretch}.actions .btn{flex:1}.settingsGrid{grid-template-columns:1fr}.heroBar{padding:12px}.network{display:none}}
     @media(max-width:600px){.shell{width:min(100% - 16px,1440px)}.assets{grid-template-columns:1fr}.asset:nth-child(5){grid-column:auto;width:auto}.walletRow{flex-direction:column}.walletRow .btn{min-height:45px}.hero img{min-height:210px}.brandLine{font-size:18px}.summaryCard,.asset,.section{padding:15px}.big{font-size:34px}}
   </style>
@@ -179,6 +180,11 @@
         <div class="big" id="sumPStonksSellUsd">$0.00</div>
         <div class="sub" id="sumPStonksSub">Estimated sell value · spot value $0.00</div>
       </article>
+      <article class="summaryCard nftValue">
+        <div class="kicker">NFTs Floor Value</div>
+        <div class="big" id="sumNftFloorUsd">$0.00</div>
+        <div class="sub" id="sumNftFloorSub">0 NFTs · floor unavailable</div>
+      </article>
     </section>
 
     <section class="assets" id="assets"></section>
@@ -224,6 +230,7 @@ const STORAGE_PRICES = 'pstonks-dashboard-prices-v1';
 const STORAGE_MARKETS = 'pstonks-dashboard-markets-v2';
 const STORAGE_PMARKETS = 'pstonks-dashboard-pmarkets-v1';
 const NFT_CONTRACT = '0x29c950a9ebe9cad2d09187686930e10b492f271e';
+const NFT_MARKETPLACE = '0xbb43750a63b3e245014cef2a7d71ddfbed7ddf0b';
 
 // Selectors confirmed from the contract read interface shown by the user.
 const SELECTOR_PENDING = 'e4f8d62e'; // pendingYields(address,uint256)
@@ -242,6 +249,9 @@ const SELECTOR_NFT_WEIGHT = '0767d178';   // weightOf(uint256)
 const SELECTOR_NFT_CLAIMABLE = '79f17c90'; // releasableBatchDividends(uint256)
 const SELECTOR_NFT_RELEASED = 'cfe83070';  // released(address,uint256)
 const SELECTOR_TOKEN_URI = 'c87b56dd';     // tokenURI(uint256)
+const SELECTOR_FLOOR_PRICE = '9363c812';   // floorPrice()
+const SELECTOR_GET_LISTINGS = 'c4b04518';  // getListings(uint256,uint256)
+const SELECTOR_RARITY_BATCH = '089e983b';  // rarityBatch(uint256[])
 const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
 const AMM_FEE_BPS = 29n;
 const TRUSTED_PRICE_QUOTES = {
@@ -270,7 +280,7 @@ const ASSETS = [
 const NFT_DIVIDEND_KEYS = ['hood','spcx','nvda','googl','aapl'];
 const NFT_RARITIES = ['Unrevealed','Common','Rare','Epic','Legendary'];
 
-const state = { wallets:[], rows:[], prices:{}, decimals:{}, pDecimals:{}, pMarkets:{}, pSellFees:{}, nftRows:[], nftError:'', loading:false, lastUpdated:null };
+const state = { wallets:[], rows:[], prices:{}, decimals:{}, pDecimals:{}, pMarkets:{}, pSellFees:{}, nftRows:[], nftMarket:{floor:0n,tokenId:0n,tierFloors:{}}, nftError:'', loading:false, lastUpdated:null };
 const $ = id => document.getElementById(id);
 
 function isAddress(v){ return /^0x[0-9a-fA-F]{40}$/.test(v); }
@@ -294,6 +304,14 @@ function decodeUintArray(hex){
   const offset=Number(BigInt('0x'+body.slice(0,64)))*2;
   const length=Number(BigInt('0x'+body.slice(offset,offset+64)));
   return Array.from({length},(_,i)=>BigInt('0x'+body.slice(offset+64+i*64,offset+128+i*64)));
+}
+function decodeListings(hex){
+  const body=String(hex||'').replace(/^0x/,''); if(body.length<128) return [];
+  const offset=Number(BigInt('0x'+body.slice(0,64)))*2,length=Number(BigInt('0x'+body.slice(offset,offset+64)));
+  return Array.from({length},(_,i)=>{
+    const at=offset+64+i*256;
+    return {tokenId:BigInt('0x'+body.slice(at,at+64)),seller:decodeAddress('0x'+body.slice(at+64,at+128)),price:BigInt('0x'+body.slice(at+128,at+192)),fillable:BigInt('0x'+body.slice(at+192,at+256))!==0n};
+  });
 }
 function decodeString(hex){
   const body=String(hex||'').replace(/^0x/,'');
@@ -378,6 +396,23 @@ async function getBalance(token,wallet){ return decodeUint(await rpcCall(token,'
 async function getNftsOfOwner(wallet){ return decodeUintArray(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFTS_OF_OWNER+encAddress(wallet))); }
 async function getNftClaimable(tokenId){ return decodeUintArray(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_CLAIMABLE+encUint(tokenId))); }
 async function getNftReleased(asset,tokenId){ return decodeUint(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_RELEASED+encAddress(asset.payoutToken)+encUint(tokenId))); }
+async function loadNftMarketplace(){
+  state.nftMarket={floor:0n,tokenId:0n,tierFloors:{}};
+  try{
+    const [floorRaw,listingsRaw]=await Promise.all([
+      rpcCall(NFT_MARKETPLACE,'0x'+SELECTOR_FLOOR_PRICE),
+      rpcCall(NFT_MARKETPLACE,'0x'+SELECTOR_GET_LISTINGS+encUint(0)+encUint(333))
+    ]);
+    const floorWords=decodeWords(floorRaw),listings=decodeListings(listingsRaw).filter(x=>x.fillable&&x.price>0n);
+    const ids=listings.map(x=>x.tokenId),tierFloors={};
+    if(ids.length){
+      const data='0x'+SELECTOR_RARITY_BATCH+encUint(32)+encUint(ids.length)+ids.map(encUint).join('');
+      const tiers=decodeUintArray(await rpcCall(NFT_CONTRACT,data));
+      listings.forEach((listing,i)=>{ const tier=Number(tiers[i]??0n); if(!tierFloors[tier]||listing.price<tierFloors[tier].price) tierFloors[tier]={price:listing.price,tokenId:listing.tokenId}; });
+    }
+    state.nftMarket={floor:floorWords[0]||0n,tokenId:floorWords[1]||0n,tierFloors};
+  }catch(err){ console.error('NFT marketplace:',err); }
+}
 async function loadNftStats(wallets){
   state.nftRows=[]; state.nftError='';
   try{
@@ -578,7 +613,7 @@ async function loadAll(){
       const [paid,pending,balance]=await Promise.all([getPaid(asset,wallet),getPending(asset,wallet),getBalance(asset.yieldContract,wallet)]);
       return {wallet,key:asset.key,paid,pending,balance};
     })());
-    const [rows]=await Promise.all([Promise.all(jobs),loadNftStats(wallets)]);
+    const [rows]=await Promise.all([Promise.all(jobs),loadNftStats(wallets),loadNftMarketplace()]);
     state.rows=rows;
     state.lastUpdated=new Date();
     render(); setStatus(`Live · ${wallets.length} wallet${wallets.length===1?'':'s'} · updated ${state.lastUpdated.toLocaleTimeString()}`,'ok');
@@ -592,6 +627,12 @@ function aggregate(){
   state.rows.forEach(r=>{out[r.key].paid+=r.paid;out[r.key].pending+=r.pending;out[r.key].balance+=r.balance||0n});
   return out;
 }
+function plsUsdPrice(){
+  const prices=ASSETS.map(a=>Number(state.pMarkets[a.key]?.wplsUsd||0)).filter(x=>Number.isFinite(x)&&x>0).sort((a,b)=>a-b);
+  if(!prices.length) return 0;
+  const mid=Math.floor(prices.length/2); return prices.length%2?prices[mid]:(prices[mid-1]+prices[mid])/2;
+}
+function fmtPls(raw){ return `${unitsNumber(raw||0n,18).toLocaleString('en-US',{maximumFractionDigits:2})} PLS`; }
 function render(){
   const totals=aggregate();
   let paidUsd=0,pendingUsd=0,pSpotTotal=0,pSellTotal=0;
@@ -608,6 +649,9 @@ function render(){
   $('sumEarnedSub').textContent='Combined pSTONKS and NFT earnings';
   $('sumPStonksSellUsd').textContent=fmtUsd(pSellTotal);
   $('sumPStonksSub').textContent=`Estimated sell value · spot value ${fmtUsd(pSpotTotal)}`;
+  const collectionFloor=state.nftMarket.floor||0n,floorUsd=unitsNumber(collectionFloor,18)*plsUsdPrice(),nftFloorTotal=floorUsd*state.nftRows.length;
+  $('sumNftFloorUsd').textContent=floorUsd>0?fmtUsd(nftFloorTotal):'No floor';
+  $('sumNftFloorSub').textContent=collectionFloor>0n?`${state.nftRows.length} NFT${state.nftRows.length===1?'':'s'} × ${fmtPls(collectionFloor)} (${fmtUsd(floorUsd)} each)`:`${state.nftRows.length} NFT${state.nftRows.length===1?'':'s'} · floor unavailable`;
 
   $('assets').innerHTML=ASSETS.map((a,i)=>{
     const t=totals[a.key],d=state.decimals[a.key]??18,pi=state.prices[a.key]||{price:0,source:'Unavailable'};
@@ -667,7 +711,9 @@ function renderNftStats(){
   const nftRows=state.nftRows.map(n=>{
     const claimed=nftAmountsUsd(n.claimed),claimable=nftAmountsUsd(n.claimable);
     const image=n.image||nftPlaceholder(`#${n.tokenId}`),fallbacks=(n.imageFallbacks||[]).join('|');
-    return `<tr><td><div class="nftIdentity"><img class="nftImage" src="${image}" data-sources="${fallbacks}" data-next="0" alt="${n.name}" title="Hover or click to enlarge" loading="lazy" referrerpolicy="no-referrer" onerror="nextNftImage(this)" onmouseenter="showNftPreview(this)" onmouseleave="hideNftPreview()" onclick="openNftLightbox(this)"><div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
+    const tierFloor=state.nftMarket.tierFloors[n.rarity],floor=tierFloor?.price||state.nftMarket.floor||0n,floorUsd=unitsNumber(floor,18)*plsUsdPrice();
+    const floorLabel=tierFloor?`${NFT_RARITIES[n.rarity]} floor`:'Collection floor';
+    return `<tr><td><div class="nftIdentity"><img class="nftImage" src="${image}" data-sources="${fallbacks}" data-next="0" alt="${n.name}" title="Hover or click to enlarge" loading="lazy" referrerpolicy="no-referrer" onerror="nextNftImage(this)" onmouseenter="showNftPreview(this)" onmouseleave="hideNftPreview()" onclick="openNftLightbox(this)"><div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td><strong>${floor>0n?fmtPls(floor):'—'}</strong><div class="metricUsd">${floorUsd>0?fmtUsd(floorUsd):'—'} · ${floorLabel}</div></td><td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
   }).join('');
   $('nftStats').innerHTML=`
     <div class="panelTitle">Tracked NFTs · per stock</div>
@@ -675,7 +721,7 @@ function renderNftStats(){
     <div class="panelTitle" style="margin-top:20px">Tracked wallets</div>
     <div class="tableWrap"><table class="nftTable"><thead><tr><th>Wallet</th><th>NFTs</th><th>Claimed USD</th><th>Claimable USD</th><th>Total Earnings</th></tr></thead><tbody>${walletRows}</tbody></table></div>
     <div class="panelTitle" style="margin-top:20px">Individual NFTs</div>
-    <div class="tableWrap"><table class="nftWalletTable"><thead><tr><th>NFT</th><th>Owner</th><th>Rarity</th>${assetHeads}<th>Claimed USD</th><th>Claimable USD</th><th>Total Earnings</th></tr></thead><tbody>${nftRows||'<tr><td colspan="11">No pStonk Brokers NFTs found in these wallets.</td></tr>'}</tbody></table></div>`;
+    <div class="tableWrap"><table class="nftWalletTable"><thead><tr><th>NFT</th><th>Owner</th><th>Rarity</th>${assetHeads}<th>NFT Floor</th><th>Claimed USD</th><th>Claimable USD</th><th>Total Earnings</th></tr></thead><tbody>${nftRows||'<tr><td colspan="12">No pStonk Brokers NFTs found in these wallets.</td></tr>'}</tbody></table></div>`;
 }
 function renderSettings(){
   const manual=getManualPrices();
@@ -683,12 +729,12 @@ function renderSettings(){
   document.querySelectorAll('[data-price]').forEach(el=>el.addEventListener('change',()=>{
     const m=getManualPrices(),v=Number(el.value); if(Number.isFinite(v)&&v>0)m[el.dataset.price]=v;else delete m[el.dataset.price]; saveManualPrices(m); loadAll();
   }));
-  $('contractList').innerHTML=`<div><strong>pStonk Brokers NFT</strong>: <code>${NFT_CONTRACT}</code></div>`+ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} PulseChain payout token: <code>${a.payoutToken}</code><br>${a.symbol} ${a.marketChainLabel} pricing token: <code>${a.marketToken}</code></div>`).join('');
+  $('contractList').innerHTML=`<div><strong>pStonk Brokers NFT</strong>: <code>${NFT_CONTRACT}</code><br><strong>pStonk Brokers marketplace</strong>: <code>${NFT_MARKETPLACE}</code></div>`+ASSETS.map(a=>`<div><strong>${a.sub}</strong> yield contract: <code>${a.yieldContract}</code><br>${a.symbol} PulseChain payout token: <code>${a.payoutToken}</code><br>${a.symbol} ${a.marketChainLabel} pricing token: <code>${a.marketToken}</code></div>`).join('');
 }
 
 $('loadBtn').addEventListener('click',loadAll);
 $('refreshBtn').addEventListener('click',loadAll);
-$('clearBtn').addEventListener('click',()=>{localStorage.removeItem(STORAGE_WALLETS);state.wallets=[];state.rows=[];state.nftRows=[];state.nftError='';$('walletInput').value='';render();setStatus('Saved wallets cleared.');});
+$('clearBtn').addEventListener('click',()=>{localStorage.removeItem(STORAGE_WALLETS);state.wallets=[];state.rows=[];state.nftRows=[];state.nftMarket={floor:0n,tokenId:0n,tierFloors:{}};state.nftError='';$('walletInput').value='';render();setStatus('Saved wallets cleared.');});
 $('walletInput').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')loadAll()});
 $('nftLightbox').addEventListener('click',closeNftLightbox);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('nftLightbox').hidden)closeNftLightbox()});
