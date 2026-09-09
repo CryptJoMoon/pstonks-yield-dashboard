@@ -99,8 +99,17 @@
     table.nftTable{min-width:900px}
     table.nftWalletTable{min-width:1050px}
     .nftIdentity{display:flex;align-items:center;gap:10px;min-width:190px}
-    .nftImage{width:54px;height:54px;object-fit:cover;border-radius:11px;border:1px solid rgba(181,76,255,.45);background:#100918}
+    .nftImage{width:54px;height:54px;object-fit:cover;border-radius:11px;border:1px solid rgba(181,76,255,.45);background:#100918;cursor:zoom-in;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+    .nftImage:hover{transform:scale(1.08);border-color:var(--green);box-shadow:0 0 18px rgba(130,255,41,.2)}
     .nftAmounts{line-height:1.55;white-space:nowrap}.nftAmounts span{display:block;color:var(--muted);font-size:10px}.nftAmounts strong{color:var(--text);font-size:12px}
+    .nftHoverPreview{position:fixed;z-index:50;width:230px;padding:7px;border-radius:16px;background:#0c0713;border:1px solid rgba(181,76,255,.65);box-shadow:0 18px 55px rgba(0,0,0,.7),0 0 30px rgba(181,76,255,.25);pointer-events:none}
+    .nftHoverPreview img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px}.nftHoverPreview div{padding:7px 3px 2px;text-align:center;font-size:12px;font-weight:800;color:#e8dcf5}
+    .nftLightbox{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:22px;background:rgba(3,1,7,.9);backdrop-filter:blur(8px);cursor:zoom-out}
+    .nftLightboxCard{position:relative;width:min(640px,92vw);padding:10px;border-radius:22px;background:#0c0713;border:1px solid rgba(181,76,255,.65);box-shadow:0 25px 90px #000;cursor:default}
+    .nftLightboxCard img{display:block;width:100%;max-height:78vh;aspect-ratio:1;object-fit:contain;border-radius:15px;background:#08040d}
+    .nftLightboxTitle{text-align:center;padding:12px 42px 5px;font-weight:900;color:#f2eaff}
+    .nftLightboxClose{position:absolute;right:14px;top:14px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.22);background:rgba(5,2,9,.82);color:white;font-size:23px;line-height:1;cursor:pointer}
+    [hidden]{display:none!important}
     th,td{text-align:right;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.065);font-size:12px;font-variant-numeric:tabular-nums}
     th{position:sticky;top:0;background:#100918;color:#a997bd;text-transform:uppercase;letter-spacing:.08em;font-size:10px;z-index:1}
     th:first-child,td:first-child{text-align:left}
@@ -196,6 +205,15 @@
 
     <div class="footer">Read-only dashboard. It never requests a wallet signature and cannot move funds. Values depend on the contracts, PulseChain RPC availability, and market pricing source.</div>
   </main>
+
+  <div class="nftHoverPreview" id="nftHoverPreview" hidden><img id="nftHoverImage" alt=""><div id="nftHoverTitle"></div></div>
+  <div class="nftLightbox" id="nftLightbox" hidden aria-modal="true" role="dialog" aria-label="NFT image preview">
+    <div class="nftLightboxCard" onclick="event.stopPropagation()">
+      <button class="nftLightboxClose" type="button" aria-label="Close NFT image" onclick="closeNftLightbox()">×</button>
+      <img id="nftLightboxImage" alt="">
+      <div class="nftLightboxTitle" id="nftLightboxTitle"></div>
+    </div>
+  </div>
 
 <script>
 const RPC = 'https://rpc.pulsechain.com';
@@ -307,6 +325,21 @@ function nextNftImage(img){
   if(next<sources.length){ img.dataset.next=String(next+1); img.src=sources[next]; }
   else { img.onerror=null; img.src=nftPlaceholder(img.alt); img.title='NFT image gateway unavailable'; }
 }
+function showNftPreview(img){
+  if(!matchMedia('(hover:hover)').matches) return;
+  const preview=$('nftHoverPreview'),rect=img.getBoundingClientRect(),width=230,gap=12;
+  $('nftHoverImage').src=img.currentSrc||img.src; $('nftHoverTitle').textContent=img.alt;
+  preview.hidden=false;
+  const left=rect.right+width+gap<innerWidth?rect.right+gap:Math.max(gap,rect.left-width-gap);
+  const top=Math.min(Math.max(gap,rect.top-70),innerHeight-290);
+  preview.style.left=`${left}px`; preview.style.top=`${top}px`;
+}
+function hideNftPreview(){ $('nftHoverPreview').hidden=true; }
+function openNftLightbox(img){
+  hideNftPreview(); $('nftLightboxImage').src=img.currentSrc||img.src; $('nftLightboxImage').alt=img.alt;
+  $('nftLightboxTitle').textContent=img.alt; $('nftLightbox').hidden=false; document.body.style.overflow='hidden';
+}
+function closeNftLightbox(){ $('nftLightbox').hidden=true; $('nftLightboxImage').src=''; document.body.style.overflow=''; }
 async function getNftMetadata(tokenId){
   try{
     const uri=decodeString(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_TOKEN_URI+encUint(tokenId)));
@@ -631,7 +664,7 @@ function renderNftStats(){
   const nftRows=state.nftRows.map(n=>{
     const claimed=nftAmountsUsd(n.claimed),claimable=nftAmountsUsd(n.claimable);
     const image=n.image||nftPlaceholder(`#${n.tokenId}`),fallbacks=(n.imageFallbacks||[]).join('|');
-    return `<tr><td><div class="nftIdentity"><img class="nftImage" src="${image}" data-sources="${fallbacks}" data-next="0" alt="${n.name}" title="${n.name}" loading="lazy" referrerpolicy="no-referrer" onerror="nextNftImage(this)"><div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
+    return `<tr><td><div class="nftIdentity"><img class="nftImage" src="${image}" data-sources="${fallbacks}" data-next="0" alt="${n.name}" title="Hover or click to enlarge" loading="lazy" referrerpolicy="no-referrer" onerror="nextNftImage(this)" onmouseenter="showNftPreview(this)" onmouseleave="hideNftPreview()" onclick="openNftLightbox(this)"><div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
   }).join('');
   $('nftStats').innerHTML=`
     <div class="panelTitle">Tracked NFTs · per stock</div>
@@ -654,6 +687,8 @@ $('loadBtn').addEventListener('click',loadAll);
 $('refreshBtn').addEventListener('click',loadAll);
 $('clearBtn').addEventListener('click',()=>{localStorage.removeItem(STORAGE_WALLETS);state.wallets=[];state.rows=[];state.nftRows=[];state.nftError='';$('walletInput').value='';render();setStatus('Saved wallets cleared.');});
 $('walletInput').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')loadAll()});
+$('nftLightbox').addEventListener('click',closeNftLightbox);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('nftLightbox').hidden)closeNftLightbox()});
 
 (function init(){
   let saved=[]; try{saved=JSON.parse(localStorage.getItem(STORAGE_WALLETS)||'[]')}catch{}
