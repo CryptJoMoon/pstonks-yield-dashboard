@@ -284,7 +284,29 @@ function decodeString(hex){
   const bytes=body.slice(offset+64,offset+64+length*2).match(/.{1,2}/g)||[];
   return new TextDecoder().decode(Uint8Array.from(bytes.map(b=>parseInt(b,16))));
 }
-function ipfsUrl(uri){ return String(uri||'').replace(/^ipfs:\/\//,'https://ipfs.io/ipfs/'); }
+function ipfsPath(uri){ return String(uri||'').replace(/^ipfs:\/\//,'').replace(/^https?:\/\/[^/]+\/ipfs\//,''); }
+function ipfsUrls(uri){
+  const path=ipfsPath(uri); if(!path) return [];
+  const slash=path.indexOf('/'),cid=slash<0?path:path.slice(0,slash),file=slash<0?'':path.slice(slash+1);
+  return [
+    `https://gateway.pinata.cloud/ipfs/${path}`,
+    `https://nftstorage.link/ipfs/${path}`,
+    `https://${cid}.ipfs.dweb.link/${file}`,
+    `https://${cid}.ipfs.w3s.link/${file}`,
+    `https://ipfs.filebase.io/ipfs/${path}`,
+    `https://ipfs.io/ipfs/${path}`
+  ];
+}
+function ipfsUrl(uri){ return ipfsUrls(uri)[0]||String(uri||''); }
+function nftPlaceholder(label){
+  const safe=String(label||'pSB').replace(/[&<>"']/g,'').slice(0,18);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#30134d"/><stop offset="1" stop-color="#0b0711"/></linearGradient></defs><rect width="180" height="180" rx="20" fill="url(#g)"/><text x="90" y="82" text-anchor="middle" fill="#82ff29" font-family="Arial" font-size="34" font-weight="700">pSB</text><text x="90" y="112" text-anchor="middle" fill="#cab8df" font-family="Arial" font-size="13">${safe}</text></svg>`)}`;
+}
+function nextNftImage(img){
+  const sources=(img.dataset.sources||'').split('|').filter(Boolean),next=Number(img.dataset.next||0);
+  if(next<sources.length){ img.dataset.next=String(next+1); img.src=sources[next]; }
+  else { img.onerror=null; img.src=nftPlaceholder(img.alt); img.title='NFT image gateway unavailable'; }
+}
 async function getNftMetadata(tokenId){
   try{
     const uri=decodeString(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_TOKEN_URI+encUint(tokenId)));
@@ -292,8 +314,9 @@ async function getNftMetadata(tokenId){
     if(uri.startsWith('data:application/json;base64,')) meta=JSON.parse(atob(uri.split(',')[1]));
     else if(uri.startsWith('data:application/json,')) meta=JSON.parse(decodeURIComponent(uri.split(',').slice(1).join(',')));
     else if(uri){ const res=await fetch(ipfsUrl(uri)); if(res.ok) meta=await res.json(); }
-    return {name:meta?.name||`pStonk Broker #${tokenId}`,image:ipfsUrl(meta?.image||'')};
-  }catch{return {name:`pStonk Broker #${tokenId}`,image:''}}
+    const images=ipfsUrls(meta?.image||'');
+    return {name:meta?.name||`pStonk Broker #${tokenId}`,image:images[0]||'',imageFallbacks:images.slice(1)};
+  }catch{return {name:`pStonk Broker #${tokenId}`,image:'',imageFallbacks:[]}}
 }
 
 async function rpcCall(to,data){
@@ -607,7 +630,8 @@ function renderNftStats(){
   }).join('');
   const nftRows=state.nftRows.map(n=>{
     const claimed=nftAmountsUsd(n.claimed),claimable=nftAmountsUsd(n.claimable);
-    return `<tr><td><div class="nftIdentity">${n.image?`<img class="nftImage" src="${n.image}" alt="${n.name}" loading="lazy" onerror="this.style.display='none'">`:''}<div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
+    const image=n.image||nftPlaceholder(`#${n.tokenId}`),fallbacks=(n.imageFallbacks||[]).join('|');
+    return `<tr><td><div class="nftIdentity"><img class="nftImage" src="${image}" data-sources="${fallbacks}" data-next="0" alt="${n.name}" title="${n.name}" loading="lazy" referrerpolicy="no-referrer" onerror="nextNftImage(this)"><div><strong>#${n.tokenId}</strong><div class="hint" style="margin:2px 0 0">${n.name}</div></div></div></td><td class="addr" title="${n.wallet}">${shortAddr(n.wallet)}</td><td>${NFT_RARITIES[n.rarity]||`Tier ${n.rarity}`} · ${n.weight.toString()}× weight</td>${ASSETS.map(a=>`<td class="nftAmounts"><span>Claimed <strong>${formatUnits(n.claimed[a.key]||0n,state.decimals[a.key]??18)}</strong></span><span>Claimable <strong>${formatUnits(n.claimable[a.key]||0n,state.decimals[a.key]??18)}</strong></span></td>`).join('')}<td class="usd">${fmtUsd(claimed)}</td><td class="usd">${fmtUsd(claimable)}</td><td class="usd"><strong>${fmtUsd(claimed+claimable)}</strong></td></tr>`;
   }).join('');
   $('nftStats').innerHTML=`
     <div class="panelTitle">Tracked NFTs · per stock</div>
