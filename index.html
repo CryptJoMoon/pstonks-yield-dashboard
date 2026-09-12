@@ -74,8 +74,6 @@
     .sub{font-size:12px;color:var(--muted);margin-top:4px}
     .assets{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;margin-bottom:14px}
     .asset{grid-column:span 2;padding:20px;position:relative;overflow:hidden}
-    .asset:nth-child(4){grid-column:2/span 2}
-    .asset:nth-child(5){grid-column:4/span 2}
     .assetHead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:17px}
     .ticker{display:flex;align-items:center;gap:11px;font-weight:950;font-size:21px}
     .coin{width:39px;height:39px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:950;background:radial-gradient(circle at 35% 30%,#baff86,#4ea919 62%,#214f0e);border:1px solid #a6ff68;box-shadow:0 0 25px rgba(130,255,41,.18);color:#091104}
@@ -128,9 +126,9 @@
     .loader{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.22);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;vertical-align:-2px;margin-right:6px}
     @keyframes spin{to{transform:rotate(360deg)}}
     .footer{text-align:center;color:#776985;font-size:11px;margin-top:18px;line-height:1.6}
-    @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.summaryCard:last-child{grid-column:1/-1}.assets{grid-template-columns:repeat(2,minmax(0,1fr))}.asset{grid-column:auto}.asset:nth-child(4){grid-column:auto}.asset:nth-child(5){grid-column:1/-1;width:calc(50% - 7px);justify-self:center}}
+    @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.summaryCard:last-child{grid-column:1/-1}.assets{grid-template-columns:repeat(2,minmax(0,1fr))}.asset{grid-column:auto}}
     @media(max-width:900px){.summary{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr}.actions{justify-content:stretch}.actions .btn{flex:1}.settingsGrid{grid-template-columns:1fr}.heroBar{padding:12px}.network{display:none}}
-    @media(max-width:600px){.shell{width:min(100% - 16px,1440px)}.assets{grid-template-columns:1fr}.asset:nth-child(5){grid-column:auto;width:auto}.walletRow{flex-direction:column}.walletRow .btn{min-height:45px}.hero img{min-height:210px}.brandLine{font-size:18px}.summaryCard,.asset,.section{padding:15px}.big{font-size:34px}}
+    @media(max-width:600px){.shell{width:min(100% - 16px,1440px)}.assets{grid-template-columns:1fr}.walletRow{flex-direction:column}.walletRow .btn{min-height:45px}.hero img{min-height:210px}.brandLine{font-size:18px}.summaryCard,.asset,.section{padding:15px}.big{font-size:34px}}
   </style>
 </head>
 <body>
@@ -247,6 +245,8 @@ const SELECTOR_NFTS_OF_OWNER = '8462151c'; // tokensOfOwner(address)
 const SELECTOR_NFT_RARITY = 'dd3b5f9a';   // rarityOf(uint256)
 const SELECTOR_NFT_WEIGHT = '0767d178';   // weightOf(uint256)
 const SELECTOR_NFT_CLAIMABLE = '79f17c90'; // releasableBatchDividends(uint256)
+const SELECTOR_NFT_RELEASABLE = '2081d631'; // releasable(address,uint256)
+const SELECTOR_NFT_DIVIDENDS = 'd9284bd4'; // dividendTokens()
 const SELECTOR_NFT_RELEASED = 'cfe83070';  // released(address,uint256)
 const SELECTOR_TOKEN_URI = 'c87b56dd';     // tokenURI(uint256)
 const SELECTOR_FLOOR_PRICE = '9363c812';   // floorPrice()
@@ -273,11 +273,10 @@ const ASSETS = [
   { key:'aapl', sub:'pAAPL', payout:'AAPLon Pulse', symbol:'AAPLon', icon:'A', pPair:'0x2812befdcaad39219e43fbe019970f067f17d550', yieldContract:'0xa1c41363ed865e5a0a65735c17157721c54d5a9e', payoutToken:'0x71836318ddd9bd0a301ef36bf0c4e97154767599', marketToken:'0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
   { key:'googl', sub:'pGOOGL', payout:'GOOGLon Pulse', symbol:'GOOGLon', icon:'G', pPair:'0xcdec09581d6e71e5a157b8d4bf11910d4f9e5170', yieldContract:'0x208b7c6363e7185a5f0477f5b08433aeeab1803b', payoutToken:'0xf04286db459d2378586a9dae0f1425c7e46ef181', marketToken:'0xba47214edd2bb43099611b208f75e4b42fdcfedc', marketChainId:'ethereum', marketChainLabel:'Ethereum' },
   { key:'hood', sub:'pHOOD', payout:'Robinhood from BSC (TokensExpress)', symbol:'HOODB', icon:'H', tracking:'rewards', pPair:'0x417032ef7885c1d18adb5ca2579b000ad19842db', yieldContract:'0xea0b2d8ec9eee5f3305e5c91764c4d50d51eeac8', payoutToken:'0x4dcaea2eaed7bb3ccfa1cfec5d6ffdd43e063298', marketToken:'0xa394dcea3fd3847fd793afbfd163e2e3858b7c65', marketChainId:'bsc', marketChainLabel:'BSC' },
-  { key:'spcx', sub:'pSPCX', payout:'SpaceX from BSC (TokensExpress)', symbol:'SPCXB', icon:'X', tracking:'rewards', pPair:'0xaa2cc4dc83d9a5d280ab0000f19f76db1f7a350e', yieldContract:'0x1a1bad21b92ec7d8d7bb2181602e3429195650ae', payoutToken:'0xb75708b81bc78006d56b9ce7485a9256226e0437', marketToken:'0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1', marketChainId:'bsc', marketChainLabel:'BSC' }
+  { key:'spcx', sub:'pSPCX', payout:'SpaceX from BSC (TokensExpress)', symbol:'SPCXB', icon:'X', tracking:'rewards', pPair:'0xaa2cc4dc83d9a5d280ab0000f19f76db1f7a350e', yieldContract:'0x1a1bad21b92ec7d8d7bb2181602e3429195650ae', payoutToken:'0xb75708b81bc78006d56b9ce7485a9256226e0437', marketToken:'0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1', marketChainId:'bsc', marketChainLabel:'BSC' },
+  { key:'spy', sub:'pSPY', payout:'SPDR S&P 500 ETF (Ondo Tokenized) from Ethereum', symbol:'SPYon', icon:'S', tracking:'rewards', pPair:'0xbe5741665c928c3df59ef99d02e7ed19b3a54c13', yieldContract:'0xb795406245fe0ecb3cc83c2643714840bc820b3e', payoutToken:'0x9f1c013e5797d895fa3e8d066c661d24bb24335d', marketToken:'0xfedc5f4a6c38211c1338aa411018dfaf26612c08', marketChainId:'ethereum', marketChainLabel:'Ethereum' }
 ];
 
-// Order returned by pStonk Brokers dividendTokens(). Always map by key before display.
-const NFT_DIVIDEND_KEYS = ['hood','spcx','nvda','googl','aapl'];
 const NFT_RARITIES = ['Unrevealed','Common','Rare','Epic','Legendary'];
 
 const state = { wallets:[], rows:[], prices:{}, decimals:{}, pDecimals:{}, pMarkets:{}, pSellFees:{}, nftRows:[], nftMarket:{floor:0n,tokenId:0n,tierFloors:{}}, nftError:'', loading:false, lastUpdated:null };
@@ -305,6 +304,7 @@ function decodeUintArray(hex){
   const length=Number(BigInt('0x'+body.slice(offset,offset+64)));
   return Array.from({length},(_,i)=>BigInt('0x'+body.slice(offset+64+i*64,offset+128+i*64)));
 }
+function decodeAddressArray(hex){ return decodeUintArray(hex).map(v=>'0x'+v.toString(16).padStart(40,'0').slice(-40)); }
 function decodeListings(hex){
   const body=String(hex||'').replace(/^0x/,''); if(body.length<128) return [];
   const offset=Number(BigInt('0x'+body.slice(0,64)))*2,length=Number(BigInt('0x'+body.slice(offset,offset+64)));
@@ -395,6 +395,7 @@ async function getPaid(asset,wallet){
 async function getBalance(token,wallet){ return decodeUint(await rpcCall(token,'0x'+SELECTOR_BALANCE+encAddress(wallet))); }
 async function getNftsOfOwner(wallet){ return decodeUintArray(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFTS_OF_OWNER+encAddress(wallet))); }
 async function getNftClaimable(tokenId){ return decodeUintArray(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_CLAIMABLE+encUint(tokenId))); }
+async function getNftReleasable(asset,tokenId){ return decodeUint(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_RELEASABLE+encAddress(asset.payoutToken)+encUint(tokenId))); }
 async function getNftReleased(asset,tokenId){ return decodeUint(await rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_RELEASED+encAddress(asset.payoutToken)+encUint(tokenId))); }
 async function loadNftMarketplace(){
   state.nftMarket={floor:0n,tokenId:0n,tierFloors:{}};
@@ -416,18 +417,26 @@ async function loadNftMarketplace(){
 async function loadNftStats(wallets){
   state.nftRows=[]; state.nftError='';
   try{
-    const owned=await Promise.all(wallets.map(async wallet=>({wallet,ids:await getNftsOfOwner(wallet)})));
+    const [owned,registeredTokens]=await Promise.all([
+      Promise.all(wallets.map(async wallet=>({wallet,ids:await getNftsOfOwner(wallet)}))),
+      rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_DIVIDENDS).then(decodeAddressArray)
+    ]);
+    const registeredAssets=registeredTokens.map(token=>ASSETS.find(a=>a.payoutToken===token));
+    const registeredSet=new Set(registeredTokens),extraAssets=ASSETS.filter(a=>!registeredSet.has(a.payoutToken));
     const nftJobs=[];
     for(const {wallet,ids} of owned) for(const tokenId of ids) nftJobs.push((async()=>{
-      const [rarityRaw,weightRaw,amounts,metadata,releasedAmounts]=await Promise.all([
+      const [rarityRaw,weightRaw,amounts,extraAmounts,metadata,releasedAmounts]=await Promise.all([
         rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_RARITY+encUint(tokenId)),
         rpcCall(NFT_CONTRACT,'0x'+SELECTOR_NFT_WEIGHT+encUint(tokenId)),
         getNftClaimable(tokenId),
+        Promise.all(extraAssets.map(asset=>getNftReleasable(asset,tokenId))),
         getNftMetadata(tokenId),
         Promise.all(ASSETS.map(asset=>getNftReleased(asset,tokenId)))
       ]);
       const claimable={},claimed={};
-      NFT_DIVIDEND_KEYS.forEach((key,i)=>claimable[key]=amounts[i]||0n);
+      ASSETS.forEach(asset=>claimable[asset.key]=0n);
+      registeredAssets.forEach((asset,i)=>{ if(asset) claimable[asset.key]=amounts[i]||0n; });
+      extraAssets.forEach((asset,i)=>claimable[asset.key]=extraAmounts[i]||0n);
       ASSETS.forEach((asset,i)=>claimed[asset.key]=releasedAmounts[i]||0n);
       return {wallet,tokenId,rarity:Number(decodeUint(rarityRaw)),weight:decodeUint(weightRaw),claimable,claimed,...metadata};
     })());
